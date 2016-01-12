@@ -1,4 +1,4 @@
-# TensorFlow Android standalone demo
+# TensorFlow Android stand-alone demo
 
 Android demo source files extracted from original TensorFlow source.
 

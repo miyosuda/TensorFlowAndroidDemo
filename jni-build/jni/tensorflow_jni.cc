@@ -95,17 +95,12 @@ TENSORFLOW_METHOD(initializeTensorflow)(
 
 	LOG(INFO) << "Creating session.";
 
-	//.. TODO: ここで落ちている
 	tensorflow::Status s = session->Create(tensorflow_graph);
 
-	LOG(INFO) << "pass0.";
-	
 	if (!s.ok()) {
 		LOG(ERROR) << "Could not create Tensorflow Graph: " << s;
 		return -1;
 	}
-
-	LOG(INFO) << "pass1.";
 
 	// Clear the proto to save memory space.
 	tensorflow_graph.Clear();

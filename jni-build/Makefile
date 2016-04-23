@@ -2,7 +2,8 @@ build:
 	ndk-build
 
 install:
-	cp -r libs/armeabi-v7a/*.so ../app/src/main/jniLibs/armeabi-v7a/
+	cp -r libs//*.so ../app/src/main/jniLibs/x86/
+	cp -r libs/x86_64/*.so ../app/src/main/jniLibs/x86_64/
 
 clean:
 	rm -r obj

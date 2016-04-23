@@ -3,17 +3,20 @@ LOCAL_PATH := $(call my-dir)
 include $(CLEAR_VARS)
 
 TENSORFLOW_CFLAGS	  := -frtti \
-  -fstack-protector-strong \
-  -fpic \
-  -ffunction-sections \
-  -funwind-tables \
-  -no-canonical-prefixes \
-  -fno-canonical-system-headers \
-  '-march=armv7-a' \
-  '-mfpu=vfpv3-d16' \
-  '-mfloat-abi=softfp' \
-  '-std=c++11' '-mfpu=neon' -O2 \
-  '-DMIN_LOG_LEVEL=0' \
+	-ffunction-sections \
+	-funwind-tables \
+	-no-canonical-prefixes \
+	-fno-canonical-system-headers \
+	-fstack-protector-strong \
+	-fno-exceptions \
+	-DEIGEN_AVOID_STL_ARRAY \
+	'-std=c++11' \
+	'-DMIN_LOG_LEVEL=0' \
+	-DTF_LEAN_BINARY \
+	-O2 \
+	-Os \
+	-MD \
+	-MF \
 
 TENSORFLOW_SRC_FILES := ./tensorflow_jni.cc \
 	./imageutils_jni.cc \
@@ -38,7 +41,8 @@ LOCAL_LDLIBS    := \
 	-Wl,-no-whole-archive \
 	$(NDK_ROOT)/sources/cxx-stl/gnu-libstdc++/4.9/libs/$(TARGET_ARCH_ABI)/libgnustl_static.a \
 	$(NDK_ROOT)/sources/cxx-stl/gnu-libstdc++/4.9/libs/$(TARGET_ARCH_ABI)/libsupc++.a \
-	-llog -landroid -lm -ljnigraphics -pthread -no-canonical-prefixes '-march=armv7-a' -Wl,--fix-cortex-a8 -Wl,-S \
+	-landroid -ljnigraphics -llog -lm -z defs -s '-Wl,--icf=all' -Wl,--exclude-libs,ALL -pthread -static-libgcc -no-canonical-prefixes -Wl,-S
+
 
 LOCAL_C_INCLUDES += $(LOCAL_PATH)/include \
 	$(LOCAL_PATH)/genfiles \

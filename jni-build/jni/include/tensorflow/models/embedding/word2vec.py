@@ -37,8 +37,6 @@ import sys
 import threading
 import time
 
-import tensorflow.python.platform
-
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 import numpy as np
@@ -83,16 +81,16 @@ flags.DEFINE_float("subsample", 1e-3,
 flags.DEFINE_boolean(
     "interactive", False,
     "If true, enters an IPython interactive session to play with the trained "
-    "model. E.g., try model.analogy('france', 'paris', 'russia') and "
-    "model.nearby(['proton', 'elephant', 'maxwell']")
+    "model. E.g., try model.analogy(b'france', b'paris', b'russia') and "
+    "model.nearby([b'proton', b'elephant', b'maxwell'])")
 flags.DEFINE_integer("statistics_interval", 5,
                      "Print statistics every n seconds.")
 flags.DEFINE_integer("summary_interval", 5,
                      "Save training summary to file every n seconds (rounded "
-                     "up to statistics interval.")
+                     "up to statistics interval).")
 flags.DEFINE_integer("checkpoint_interval", 600,
                      "Checkpoint the model (i.e. save the parameters) every n "
-                     "seconds (rounded up to statistics interval.")
+                     "seconds (rounded up to statistics interval).")
 
 FLAGS = flags.FLAGS
 
@@ -397,8 +395,7 @@ class Word2Vec(object):
     initial_epoch, initial_words = self._session.run([self._epoch, self._words])
 
     summary_op = tf.merge_all_summaries()
-    summary_writer = tf.train.SummaryWriter(opts.save_path,
-                                            graph_def=self._session.graph_def)
+    summary_writer = tf.train.SummaryWriter(opts.save_path, self._session.graph)
     workers = []
     for _ in xrange(opts.concurrent_steps):
       t = threading.Thread(target=self._train_thread_body)
@@ -423,7 +420,7 @@ class Word2Vec(object):
         last_summary_time = now
       if now - last_checkpoint_time > opts.checkpoint_interval:
         self.saver.save(self._session,
-                        opts.save_path + "model",
+                        os.path.join(opts.save_path, "model.ckpt"),
                         global_step=step.astype(int))
         last_checkpoint_time = now
       if epoch != initial_epoch:
@@ -509,7 +506,8 @@ def main(_):
     sys.exit(1)
   opts = Options()
   with tf.Graph().as_default(), tf.Session() as session:
-    model = Word2Vec(opts, session)
+    with tf.device("/cpu:0"):
+      model = Word2Vec(opts, session)
     for _ in xrange(opts.epochs_to_train):
       model.train()  # Process one epoch
       model.eval()  # Eval analogies.
@@ -519,8 +517,8 @@ def main(_):
                      global_step=model.global_step)
     if FLAGS.interactive:
       # E.g.,
-      # [0]: model.analogy('france', 'paris', 'russia')
-      # [1]: model.nearby(['proton', 'elephant', 'maxwell'])
+      # [0]: model.analogy(b'france', b'paris', b'russia')
+      # [1]: model.nearby([b'proton', b'elephant', b'maxwell'])
       _start_shell(locals())
 
 

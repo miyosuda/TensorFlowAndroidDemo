@@ -2,8 +2,9 @@
 
 TensorFlow isn't just for machine learning.  Here we give a (somewhat
 pedestrian) example of using TensorFlow for simulating the behavior of a
-partial differential equation.  We'll simulate the surface of square pond as a
-few raindrops land on it.
+[partial differential equation](
+https://en.wikipedia.org/wiki/Partial_differential_equation).
+We'll simulate the surface of square pond as a few raindrops land on it.
 
 Note: This tutorial was originally prepared as an IPython notebook.
 
@@ -81,8 +82,8 @@ Here we create our pond and hit it with some rain drops.
 # Initial Conditions -- some rain drops hit a pond
 
 # Set everything to zero
-u_init = np.zeros([N, N], dtype="float32")
-ut_init = np.zeros([N, N], dtype="float32")
+u_init = np.zeros([N, N], dtype=np.float32)
+ut_init = np.zeros([N, N], dtype=np.float32)
 
 # Some rain drops hit a pond at random points
 for n in range(40):

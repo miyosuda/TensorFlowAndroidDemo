@@ -17,18 +17,10 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/util/padding.h"
 
 namespace tensorflow {
-
-void RequireDefaultOps() {
-// TODO(opensource): Use a more generic sounding preprocessor name than
-// GOOGLE_CUDA (maybe SUPPORT_CUDA?)
-#if GOOGLE_CUDA
-  void RequireGPUDevice();
-  RequireGPUDevice();
-#endif
-}
 
 Status Get2dOutputSize(const int in_height, const int in_width,
                        int filter_height, int filter_width, int row_stride,
@@ -46,11 +38,6 @@ Status Get2dOutputSizeVerbose(const int in_height, const int in_width,
                               int row_stride, int col_stride, Padding padding,
                               int* new_height, int* new_width, int* pad_top,
                               int* pad_bottom, int* pad_left, int* pad_right) {
-  // Cannot have strides larger than the patch size.
-  if (row_stride > filter_height || col_stride > filter_width) {
-    return errors::InvalidArgument(
-        "stride must be less than or equal to kernel size");
-  }
   switch (padding) {
     case Padding::VALID:
       *new_height = ceil((in_height - filter_height + 1.f) /
@@ -67,16 +54,14 @@ Status Get2dOutputSizeVerbose(const int in_height, const int in_width,
       *new_width = ceil(in_width / static_cast<float>(col_stride));
       // Calculate padding for top/bottom/left/right, spilling any excess
       // padding to bottom and right.
-      const int pad_needed_height =
-          (*new_height - 1) * row_stride + filter_height - in_height;
+      const int pad_needed_height = std::max(0,
+          (*new_height - 1) * row_stride + filter_height - in_height);
       *pad_top = pad_needed_height / 2;
-      CHECK_GE(pad_needed_height, 0);
       *pad_bottom = pad_needed_height - *pad_top;
 
-      const int pad_needed_width =
-          (*new_width - 1) * col_stride + filter_width - in_width;
+      const int pad_needed_width = std::max(0,
+          (*new_width - 1) * col_stride + filter_width - in_width);
       *pad_left = pad_needed_width / 2;
-      CHECK_GE(pad_needed_width, 0);
       *pad_right = pad_needed_width - *pad_left;
       break;
   }
@@ -125,4 +110,19 @@ Status GetBroadcastSize(const int index, const int in_size, const int ksize,
   }
   return Status::OK();
 }
+
+string SanitizeThreadSuffix(string suffix) {
+  string clean;
+  for (int i = 0; i < suffix.size(); ++i) {
+    const char ch = suffix[i];
+    if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
+        (ch >= '0' && ch <= '9') || ch == '_' || ch == '-') {
+      clean += ch;
+    } else {
+      clean += '_';
+    }
+  }
+  return clean;
+}
+
 }  // namespace tensorflow

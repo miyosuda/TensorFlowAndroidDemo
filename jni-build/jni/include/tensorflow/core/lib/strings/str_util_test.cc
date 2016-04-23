@@ -15,7 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/lib/strings/str_util.h"
 
-#include <gtest/gtest.h>
+#include <vector>
+#include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 
@@ -40,15 +41,6 @@ TEST(CUnescape, Basic) {
   EXPECT_EQ("hello\r", ExpectCUnescapeSuccess("hello\\r"));
   EXPECT_EQ("\t\r\"'", ExpectCUnescapeSuccess("\\t\\r\\\"\\'"));
   EXPECT_EQ("\320hi\200", ExpectCUnescapeSuccess("\\320hi\\200"));
-}
-
-TEST(NumericParse32, Basic) {
-  int32 val = -1234;
-  EXPECT_TRUE(str_util::NumericParse32("0", &val) && val == 0);
-  EXPECT_TRUE(str_util::NumericParse32("123", &val) && val == 123);
-  EXPECT_TRUE(str_util::NumericParse32("-375", &val) && val == -375);
-  EXPECT_FALSE(str_util::NumericParse32("123hello", &val));
-  EXPECT_FALSE(str_util::NumericParse32("hello123", &val));
 }
 
 TEST(StripTrailingWhitespace, Basic) {
@@ -166,6 +158,26 @@ TEST(ConsumeLeadingDigits, Basic) {
   // 2^64-1
   TestConsumeLeadingDigits("18446744073709551615xyz", 18446744073709551615ull,
                            "xyz");
+}
+
+void TestConsumeNonWhitespace(StringPiece s, StringPiece expected,
+                              StringPiece remaining) {
+  StringPiece v;
+  StringPiece input(s);
+  if (str_util::ConsumeNonWhitespace(&input, &v)) {
+    EXPECT_EQ(v, expected);
+    EXPECT_EQ(input, remaining);
+  } else {
+    EXPECT_EQ(expected, "");
+    EXPECT_EQ(input, remaining);
+  }
+}
+
+TEST(ConsumeNonWhitespace, Basic) {
+  TestConsumeNonWhitespace("", "", "");
+  TestConsumeNonWhitespace(" ", "", " ");
+  TestConsumeNonWhitespace("abc", "abc", "");
+  TestConsumeNonWhitespace("abc ", "abc", " ");
 }
 
 TEST(ConsumePrefix, Basic) {

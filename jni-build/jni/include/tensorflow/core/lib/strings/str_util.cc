@@ -14,7 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/lib/strings/str_util.h"
+
 #include <ctype.h>
+#include <vector>
+#include "tensorflow/core/lib/strings/numbers.h"
 
 namespace tensorflow {
 namespace str_util {
@@ -205,17 +208,6 @@ bool CUnescape(StringPiece source, string* dest, string* error) {
   return true;
 }
 
-bool NumericParse32(const string& text, int32* val) {
-  // Slow, but this code is not performance critical, and this
-  // doesn't bring in any new dependencies
-  char junk;
-  if (sscanf(text.c_str(), "%d%c", val, &junk) == 1) {
-    return true;
-  } else {
-    return false;
-  }
-}
-
 void StripTrailingWhitespace(string* s) {
   string::size_type i;
   for (i = s->size(); i > 0 && isspace((*s)[i - 1]); --i) {
@@ -311,13 +303,32 @@ bool ConsumeLeadingDigits(StringPiece* s, uint64* val) {
   }
 }
 
+bool ConsumeNonWhitespace(StringPiece* s, StringPiece* val) {
+  const char* p = s->data();
+  const char* limit = p + s->size();
+  while (p < limit) {
+    const char c = *p;
+    if (isspace(c)) break;
+    p++;
+  }
+  const size_t n = p - s->data();
+  if (n > 0) {
+    val->set(s->data(), n);
+    s->remove_prefix(n);
+    return true;
+  } else {
+    val->clear();
+    return false;
+  }
+}
+
 bool SplitAndParseAsInts(StringPiece text, char delim,
                          std::vector<int32>* result) {
   result->clear();
   std::vector<string> num_strings = Split(text, delim);
   for (const auto& s : num_strings) {
     int32 num;
-    if (!NumericParse32(s, &num)) return false;
+    if (!strings::safe_strto32(s, &num)) return false;
     result->push_back(num);
   }
   return true;

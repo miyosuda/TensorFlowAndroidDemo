@@ -53,7 +53,7 @@ with tf.Session() as sess:
 ```
 
 The [`ConfigProto`]
-(https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/config.proto)
+(https://www.tensorflow.org/code/tensorflow/core/protobuf/config.proto)
 protocol buffer exposes various configuration options for a
 session. For example, to create a session that uses soft constraints
 for device placement, and log the resulting placement decisions,
@@ -87,13 +87,13 @@ the session constructor.
     Defaults to using an in-process engine. At present, no value
     other than the empty string is supported.
 *  <b>`graph`</b>: (Optional.) The `Graph` to be launched (described above).
-*  <b>`config`</b>: (Optional.) A [`ConfigProto`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/config.proto)
+*  <b>`config`</b>: (Optional.) A [`ConfigProto`](https://www.tensorflow.org/code/tensorflow/core/protobuf/config.proto)
     protocol buffer with configuration options for the session.
 
 
 - - -
 
-#### `tf.Session.run(fetches, feed_dict=None)` {#Session.run}
+#### `tf.Session.run(fetches, feed_dict=None, options=None, run_metadata=None)` {#Session.run}
 
 Runs the operations and evaluates the tensors in `fetches`.
 
@@ -117,6 +117,9 @@ method. A graph element can be one of the following types:
   the *i*th return value will be a
   [`SparseTensorValue`](../../api_docs/python/sparse_ops.md#SparseTensorValue)
   containing the value of that sparse tensor.
+* If the *i*th element of `fetches` is produced by a `get_tensor_handle` op,
+  the *i*th return value will be a numpy ndarray containing the handle of
+  that tensor.
 
 The optional `feed_dict` argument allows the caller to override
 the value of tensors in the graph. Each key in `feed_dict` can be
@@ -133,6 +136,15 @@ one of the following types:
   the value should be a
   [`SparseTensorValue`](../../api_docs/python/sparse_ops.md#SparseTensorValue).
 
+The optional `options` argument expects a [`RunOptions`] proto. The options
+allow controlling the behavior of this particular step (e.g. turning tracing
+on).
+
+The optional `run_metadata` argument expects a [`RunMetadata`] proto. When
+appropriate, the non-Tensor output of this step will be collected there. For
+example, when users turn on tracing in `options`, the profiled info will be
+collected into this argument and passed back.
+
 ##### Args:
 
 
@@ -140,6 +152,8 @@ one of the following types:
     (described above).
 *  <b>`feed_dict`</b>: A dictionary that maps graph elements to values
     (described above).
+*  <b>`options`</b>: A [`RunOptions`] protocol buffer
+*  <b>`run_metadata`</b>: A [`RunMetadata`] protocol buffer
 
 ##### Returns:
 
@@ -277,7 +291,7 @@ with tf.Session():
 
 - - -
 
-#### `tf.InteractiveSession.__init__(target='', graph=None)` {#InteractiveSession.__init__}
+#### `tf.InteractiveSession.__init__(target='', graph=None, config=None)` {#InteractiveSession.__init__}
 
 Creates a new interactive TensorFlow session.
 
@@ -296,6 +310,7 @@ the session constructor.
     Defaults to using an in-process engine. At present, no value
     other than the empty string is supported.
 *  <b>`graph`</b>: (Optional.) The `Graph` to be launched (described above).
+*  <b>`config`</b>: (Optional) `ConfigProto` proto used to configure the session.
 
 
 - - -
@@ -316,7 +331,7 @@ Returns the default session for the current thread.
 The returned `Session` will be the innermost session on which a
 `Session` or `Session.as_default()` context has been entered.
 
-*N.B.* The default session is a property of the current thread. If you
+NOTE: The default session is a property of the current thread. If you
 create a new thread, and wish to use the default session in that
 thread, you must explicitly add a `with sess.as_default():` in that
 thread's function.
@@ -374,7 +389,8 @@ Creates a new `OpError` indicating that a particular op failed.
 ##### Args:
 
 
-*  <b>`node_def`</b>: The `graph_pb2.NodeDef` proto representing the op that failed.
+*  <b>`node_def`</b>: The `graph_pb2.NodeDef` proto representing the op that failed,
+    if known; otherwise None.
 *  <b>`op`</b>: The `ops.Operation` that failed, if known; otherwise None.
 *  <b>`message`</b>: The message string describing the failure.
 *  <b>`error_code`</b>: The `error_codes_pb2.Code` describing the error.
@@ -607,7 +623,7 @@ Creates an `AbortedError`.
 
 ### `class tf.errors.OutOfRangeError` {#OutOfRangeError}
 
-Raised when an operation executed past the valid range.
+Raised when an operation iterates past the valid input range.
 
 This exception is raised in "end-of-file" conditions, such as when a
 [`queue.dequeue()`](../../api_docs/python/io_ops.md#QueueBase.dequeue)

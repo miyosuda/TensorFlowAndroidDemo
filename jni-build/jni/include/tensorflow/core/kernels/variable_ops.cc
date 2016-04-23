@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
@@ -28,6 +28,8 @@ REGISTER_KERNEL_BUILDER(Name("TemporaryVariable").Device(DEVICE_CPU),
                         TemporaryVariableOp);
 REGISTER_KERNEL_BUILDER(Name("DestroyTemporaryVariable").Device(DEVICE_CPU),
                         DestroyTemporaryVariableOp);
+REGISTER_KERNEL_BUILDER(Name("IsVariableInitialized").Device(DEVICE_CPU),
+                        IsVariableInitializedOp);
 
 #if GOOGLE_CUDA
 // Only register 'Variable' on GPU for the subset of types also supported by
@@ -43,7 +45,12 @@ REGISTER_KERNEL_BUILDER(Name("DestroyTemporaryVariable").Device(DEVICE_CPU),
   REGISTER_KERNEL_BUILDER(Name("DestroyTemporaryVariable")               \
                               .Device(DEVICE_GPU)                        \
                               .TypeConstraint<type>("T"),                \
-                          DestroyTemporaryVariableOp);
+                          DestroyTemporaryVariableOp);                   \
+  REGISTER_KERNEL_BUILDER(Name("IsVariableInitialized")                  \
+                              .Device(DEVICE_GPU)                        \
+                              .TypeConstraint<type>("dtype")             \
+                              .HostMemory("is_initialized"),             \
+                          IsVariableInitializedOp);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS

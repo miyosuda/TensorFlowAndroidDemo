@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/kernels/ops_util.h"
-#include <gtest/gtest.h>
+#include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace {
@@ -128,12 +128,6 @@ class OpsUtilTest : public ::testing::Test {
     EXPECT_EQ(bcast.output.new_size, new_size);
   }
 };
-
-// Test stride > ksize fails with INVALID_ARGUMENT.
-TEST_F(OpsUtilTest, Get2dOutputSizeInvalidTest) {
-  padding_struct pad_struct = {{3, 3, 1, 2, 2, 2, SAME}, {3, 3, 1, 1, 1, 1}};
-  VerifyGet2dOutputSizeBoundaries(pad_struct, error::INVALID_ARGUMENT);
-}
 
 TEST_F(OpsUtilTest, Get2dOutputSizeNegativeSizeTest) {
   padding_struct pad_struct = {{1, 1, 3, 3, 1, 1, VALID}, {-1, -1, 0, 0, 0, 0}};
@@ -274,6 +268,10 @@ TEST_F(OpsUtilTest, GetBroadcastTest3_3_3_2) {
   for (size_t i = 0; i < sizeof(bcast) / sizeof(bcast[0]); ++i) {
     VerifyBcastValues(bcast[i]);
   }
+}
+
+TEST_F(OpsUtilTest, SanitizeThreadSuffix) {
+  EXPECT_EQ("_aBc123_-___", SanitizeThreadSuffix("/aBc123_-  /"));
 }
 
 }  // namespace

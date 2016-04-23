@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
@@ -77,12 +75,15 @@ class SliceTest(tf.test.TestCase):
       inp = np.random.rand(10).astype("f")
       a = tf.constant(inp, shape=[10], dtype=tf.float32)
 
-      hi = np.random.random_integers(0, 9)
+      hi = np.random.randint(0, 9)
       scalar_t = a[hi]
       scalar_val = scalar_t.eval()
       self.assertAllEqual(scalar_val, inp[hi])
 
-      lo = np.random.random_integers(0, hi)
+      if hi > 0:
+        lo = np.random.randint(0, hi)
+      else:
+        lo = 0
       slice_t = a[lo:hi]
       slice_val = slice_t.eval()
       self.assertAllEqual(slice_val, inp[lo:hi])
@@ -112,7 +113,7 @@ class SliceTest(tf.test.TestCase):
       inp = np.random.rand(4, 4).astype("f")
       a = tf.constant(inp, shape=[4, 4], dtype=tf.float32)
 
-      x, y = np.random.random_integers(0, 3, size=2).tolist()
+      x, y = np.random.randint(0, 3, size=2).tolist()
       slice_t = a[x, 0:y]
       slice_val = slice_t.eval()
     self.assertAllEqual(slice_val, inp[x, 0:y])
@@ -144,9 +145,12 @@ class SliceTest(tf.test.TestCase):
       inp = np.random.rand(4, 10, 10, 4).astype("f")
       a = tf.constant(inp, dtype=tf.float32)
 
-      x = np.random.random_integers(0, 9)
-      z = np.random.random_integers(0, 9)
-      y = np.random.random_integers(0, z)
+      x = np.random.randint(0, 9)
+      z = np.random.randint(0, 9)
+      if z > 0:
+        y = np.random.randint(0, z)
+      else:
+        y = 0
       slice_t = a[:, x, y:z, :]
       self.assertAllEqual(slice_t.eval(), inp[:, x, y:z, :])
 
@@ -156,21 +160,22 @@ class SliceTest(tf.test.TestCase):
       self._testComplex(use_gpu=True)
 
   def _RunAndVerifyResult(self, use_gpu):
-    # Random dims of rank 5
-    input_shape = np.random.randint(0, 20, size=5)
+    # Random dims of rank 6
+    input_shape = np.random.randint(0, 20, size=6)
     inp = np.random.rand(*input_shape).astype("f")
     with self.test_session(use_gpu=use_gpu) as sess:
       a = tf.constant([float(x) for x in inp.ravel(order="C")],
                                shape=input_shape, dtype=tf.float32)
       indices = [0 if x == 0 else np.random.randint(x) for x in input_shape]
       sizes = [np.random.randint(0, input_shape[i] - indices[i] + 1)
-               for i in range(5)]
+               for i in range(6)]
       slice_t = tf.slice(a, indices, sizes)
       slice2_t = a[indices[0]:indices[0]+sizes[0],
                    indices[1]:indices[1]+sizes[1],
                    indices[2]:indices[2]+sizes[2],
                    indices[3]:indices[3]+sizes[3],
-                   indices[4]:indices[4]+sizes[4]]
+                   indices[4]:indices[4]+sizes[4],
+                   indices[5]:indices[5]+sizes[5]]
 
       slice_val, slice2_val = sess.run([slice_t, slice2_t])
 
@@ -178,7 +183,8 @@ class SliceTest(tf.test.TestCase):
                        indices[1]:indices[1]+sizes[1],
                        indices[2]:indices[2]+sizes[2],
                        indices[3]:indices[3]+sizes[3],
-                       indices[4]:indices[4]+sizes[4]]
+                       indices[4]:indices[4]+sizes[4],
+                       indices[5]:indices[5]+sizes[5]]
     self.assertAllEqual(slice_val, expected_val)
     self.assertAllEqual(slice2_val, expected_val)
     self.assertEqual(expected_val.shape, slice_t.get_shape())

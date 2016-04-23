@@ -7,6 +7,7 @@
 #include <algorithm>
 
 #include <google/protobuf/stubs/common.h>
+#include <google/protobuf/stubs/port.h>
 #include <google/protobuf/stubs/once.h>
 #include <google/protobuf/io/coded_stream.h>
 #include <google/protobuf/wire_format_lite_inl.h>
@@ -187,7 +188,8 @@ void protobuf_AddDesc_tensorflow_2fcore_2fframework_2fop_5fdef_2eproto() {
     "\022\023\n\013description\030\004 \001(\t\022\023\n\013has_minimum\030\005 \001"
     "(\010\022\017\n\007minimum\030\006 \001(\003\022-\n\016allowed_values\030\007 "
     "\001(\0132\025.tensorflow.AttrValue\"\'\n\006OpList\022\035\n\002"
-    "op\030\001 \003(\0132\021.tensorflow.OpDefb\006proto3", 835);
+    "op\030\001 \003(\0132\021.tensorflow.OpDefB)\n\030org.tenso"
+    "rflow.frameworkB\013OpDefProtosP\001b\006proto3", 878);
   ::google::protobuf::MessageFactory::InternalRegisterGeneratedFile(
     "tensorflow/core/framework/op_def.proto", &protobuf_RegisterTypes);
   OpDef::default_instance_ = new OpDef();

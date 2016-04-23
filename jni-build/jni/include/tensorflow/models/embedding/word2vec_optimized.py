@@ -36,8 +36,6 @@ import sys
 import threading
 import time
 
-import tensorflow.python.platform
-
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 import numpy as np
@@ -80,8 +78,8 @@ flags.DEFINE_float("subsample", 1e-3,
 flags.DEFINE_boolean(
     "interactive", False,
     "If true, enters an IPython interactive session to play with the trained "
-    "model. E.g., try model.analogy('france', 'paris', 'russia') and "
-    "model.nearby(['proton', 'elephant', 'maxwell']")
+    "model. E.g., try model.analogy(b'france', b'paris', b'russia') and "
+    "model.nearby([b'proton', b'elephant', b'maxwell'])")
 
 FLAGS = flags.FLAGS
 
@@ -414,7 +412,8 @@ def main(_):
     sys.exit(1)
   opts = Options()
   with tf.Graph().as_default(), tf.Session() as session:
-    model = Word2Vec(opts, session)
+    with tf.device("/cpu:0"):
+      model = Word2Vec(opts, session)
     for _ in xrange(opts.epochs_to_train):
       model.train()  # Process one epoch
       model.eval()  # Eval analogies.
@@ -423,8 +422,8 @@ def main(_):
                      global_step=model.step)
     if FLAGS.interactive:
       # E.g.,
-      # [0]: model.Analogy('france', 'paris', 'russia')
-      # [1]: model.Nearby(['proton', 'elephant', 'maxwell'])
+      # [0]: model.analogy(b'france', b'paris', b'russia')
+      # [1]: model.nearby([b'proton', b'elephant', b'maxwell'])
       _start_shell(locals())
 
 

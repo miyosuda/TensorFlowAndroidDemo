@@ -130,6 +130,18 @@ class TensorProto : public ::google::protobuf::Message {
   ::std::string* release_tensor_content();
   void set_allocated_tensor_content(::std::string* tensor_content);
 
+  // repeated int32 half_val = 13 [packed = true];
+  int half_val_size() const;
+  void clear_half_val();
+  static const int kHalfValFieldNumber = 13;
+  ::google::protobuf::int32 half_val(int index) const;
+  void set_half_val(int index, ::google::protobuf::int32 value);
+  void add_half_val(::google::protobuf::int32 value);
+  const ::google::protobuf::RepeatedField< ::google::protobuf::int32 >&
+      half_val() const;
+  ::google::protobuf::RepeatedField< ::google::protobuf::int32 >*
+      mutable_half_val();
+
   // repeated float float_val = 5 [packed = true];
   int float_val_size() const;
   void clear_float_val();
@@ -218,6 +230,18 @@ class TensorProto : public ::google::protobuf::Message {
   ::google::protobuf::RepeatedField< bool >*
       mutable_bool_val();
 
+  // repeated double dcomplex_val = 12 [packed = true];
+  int dcomplex_val_size() const;
+  void clear_dcomplex_val();
+  static const int kDcomplexValFieldNumber = 12;
+  double dcomplex_val(int index) const;
+  void set_dcomplex_val(int index, double value);
+  void add_dcomplex_val(double value);
+  const ::google::protobuf::RepeatedField< double >&
+      dcomplex_val() const;
+  ::google::protobuf::RepeatedField< double >*
+      mutable_dcomplex_val();
+
   // @@protoc_insertion_point(class_scope:tensorflow.TensorProto)
  private:
 
@@ -227,6 +251,8 @@ class TensorProto : public ::google::protobuf::Message {
   int dtype_;
   ::google::protobuf::int32 version_number_;
   ::google::protobuf::internal::ArenaStringPtr tensor_content_;
+  ::google::protobuf::RepeatedField< ::google::protobuf::int32 > half_val_;
+  mutable int _half_val_cached_byte_size_;
   ::google::protobuf::RepeatedField< float > float_val_;
   mutable int _float_val_cached_byte_size_;
   ::google::protobuf::RepeatedField< double > double_val_;
@@ -240,6 +266,8 @@ class TensorProto : public ::google::protobuf::Message {
   mutable int _int64_val_cached_byte_size_;
   ::google::protobuf::RepeatedField< bool > bool_val_;
   mutable int _bool_val_cached_byte_size_;
+  ::google::protobuf::RepeatedField< double > dcomplex_val_;
+  mutable int _dcomplex_val_cached_byte_size_;
   mutable int _cached_size_;
   friend void  protobuf_AddDesc_tensorflow_2fcore_2fframework_2ftensor_2eproto();
   friend void protobuf_AssignDesc_tensorflow_2fcore_2fframework_2ftensor_2eproto();
@@ -362,6 +390,36 @@ inline void TensorProto::set_allocated_tensor_content(::std::string* tensor_cont
   }
   tensor_content_.SetAllocatedNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited(), tensor_content);
   // @@protoc_insertion_point(field_set_allocated:tensorflow.TensorProto.tensor_content)
+}
+
+// repeated int32 half_val = 13 [packed = true];
+inline int TensorProto::half_val_size() const {
+  return half_val_.size();
+}
+inline void TensorProto::clear_half_val() {
+  half_val_.Clear();
+}
+inline ::google::protobuf::int32 TensorProto::half_val(int index) const {
+  // @@protoc_insertion_point(field_get:tensorflow.TensorProto.half_val)
+  return half_val_.Get(index);
+}
+inline void TensorProto::set_half_val(int index, ::google::protobuf::int32 value) {
+  half_val_.Set(index, value);
+  // @@protoc_insertion_point(field_set:tensorflow.TensorProto.half_val)
+}
+inline void TensorProto::add_half_val(::google::protobuf::int32 value) {
+  half_val_.Add(value);
+  // @@protoc_insertion_point(field_add:tensorflow.TensorProto.half_val)
+}
+inline const ::google::protobuf::RepeatedField< ::google::protobuf::int32 >&
+TensorProto::half_val() const {
+  // @@protoc_insertion_point(field_list:tensorflow.TensorProto.half_val)
+  return half_val_;
+}
+inline ::google::protobuf::RepeatedField< ::google::protobuf::int32 >*
+TensorProto::mutable_half_val() {
+  // @@protoc_insertion_point(field_mutable_list:tensorflow.TensorProto.half_val)
+  return &half_val_;
 }
 
 // repeated float float_val = 5 [packed = true];
@@ -596,6 +654,36 @@ inline ::google::protobuf::RepeatedField< bool >*
 TensorProto::mutable_bool_val() {
   // @@protoc_insertion_point(field_mutable_list:tensorflow.TensorProto.bool_val)
   return &bool_val_;
+}
+
+// repeated double dcomplex_val = 12 [packed = true];
+inline int TensorProto::dcomplex_val_size() const {
+  return dcomplex_val_.size();
+}
+inline void TensorProto::clear_dcomplex_val() {
+  dcomplex_val_.Clear();
+}
+inline double TensorProto::dcomplex_val(int index) const {
+  // @@protoc_insertion_point(field_get:tensorflow.TensorProto.dcomplex_val)
+  return dcomplex_val_.Get(index);
+}
+inline void TensorProto::set_dcomplex_val(int index, double value) {
+  dcomplex_val_.Set(index, value);
+  // @@protoc_insertion_point(field_set:tensorflow.TensorProto.dcomplex_val)
+}
+inline void TensorProto::add_dcomplex_val(double value) {
+  dcomplex_val_.Add(value);
+  // @@protoc_insertion_point(field_add:tensorflow.TensorProto.dcomplex_val)
+}
+inline const ::google::protobuf::RepeatedField< double >&
+TensorProto::dcomplex_val() const {
+  // @@protoc_insertion_point(field_list:tensorflow.TensorProto.dcomplex_val)
+  return dcomplex_val_;
+}
+inline ::google::protobuf::RepeatedField< double >*
+TensorProto::mutable_dcomplex_val() {
+  // @@protoc_insertion_point(field_mutable_list:tensorflow.TensorProto.dcomplex_val)
+  return &dcomplex_val_;
 }
 
 #endif  // !PROTOBUF_INLINE_NOT_IN_HEADERS

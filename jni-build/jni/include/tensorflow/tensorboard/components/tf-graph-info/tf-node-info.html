@@ -119,7 +119,7 @@
             on-click="_toggleExpanded"
             class="toggle-button">
           </paper-icon-button>
-          <div class="node-name">[[_getNodeName(nodeName)]]</div>
+          <div class="node-name" id="nodetitle"></div>
         </div>
         <div secondary>
           <tf-graph-icon class="node-icon" node="[[_node]]"
@@ -175,9 +175,10 @@
               <tf-node-list-item
                   class="non-control-list-item"
                   card-node="[[_node]]"
-                  item-node="[[_getNode(item, graphHierarchy)]]"
-                  item-render-info="[[_getRenderInfo(item, renderHierarchy)]]"
-                  name="[[item]]"
+                  item-node="[[item.node]]"
+                  edge-label="[[item.edgeLabel]]"
+                  item-render-info="[[item.renderInfo]]"
+                  name="[[item.name]]"
                   item-type="predecessors"
                   color-by="[[colorBy]]"
                   template-index="[[_templateIndex]]">
@@ -194,16 +195,15 @@
                 </paper-icon-button>
                 Control dependencies
               </div>
-              <iron-collapse opened="{{_openedControlPred}}">
+              <iron-collapse opened="{{_openedControlPred}}" no-animation>
                 <template is="dom-if" if="{{_openedControlPred}}" restamp="true">
                   <iron-list class="sub-list" items="[[_predecessors.control]]">
                     <template>
                       <tf-node-list-item
                           card-node="[[_node]]"
-                          item-node="[[_getNode(item, graphHierarchy)]]"
-                          item-render-info=
-                              "[[_getRenderInfo(item, renderHierarchy)]]"
-                          name="[[item]]"
+                          item-node="[[item.node]]"
+                          item-render-info="[[item.renderInfo]]"
+                          name="[[item.name]]"
                           item-type="predecessors"
                           color-by="[[colorBy]]"
                           template-index="[[_templateIndex]]">
@@ -225,9 +225,10 @@
               <tf-node-list-item
                   class="non-control-list-item"
                   card-node="[[_node]]"
-                  item-node="[[_getNode(item, graphHierarchy)]]"
-                  item-render-info="[[_getRenderInfo(item, renderHierarchy)]]"
-                  name="[[item]]"
+                  item-node="[[item.node]]"
+                  edge-label="[[item.edgeLabel]]"
+                  item-render-info="[[item.renderInfo]]"
+                  name="[[item.name]]"
                   item-type="successor"
                   color-by="[[colorBy]]"
                   template-index="[[_templateIndex]]">
@@ -244,16 +245,15 @@
                 </paper-icon-button>
                 Control dependencies
               </div>
-              <iron-collapse opened="{{_openedControlSucc}}">
+              <iron-collapse opened="{{_openedControlSucc}}" no-animation>
                 <template is="dom-if" if="{{_openedControlSucc}}" restamp="true">
                   <iron-list class="sub-list" items="[[_successors.control]]">
                     <template>
                       <tf-node-list-item
                           card-node="[[_node]]"
-                          item-node="[[_getNode(item, graphHierarchy)]]"
-                          item-render-info=
-                              "[[_getRenderInfo(item, renderHierarchy)]]"
-                          name="[[item]]"
+                          item-node="[[item.node]]"
+                          item-render-info="[[item.renderInfo]]"
+                          name="[[item.name]]"
                           item-type="successors"
                           color-by="[[colorBy]]"
                           template-index="[[_templateIndex]]">
@@ -270,6 +270,13 @@
             <span>[[_auxButtonText]]</span>
           </paper-button>
         </div>
+        <template is="dom-if" if="{{_isInSeries(_node)}}">
+          <div class="toggle-include-group">
+            <paper-button raised class="toggle-include" on-click="_toggleGroup">
+              <span>[[_groupButtonText]]</span>
+            </paper-button>
+          </div>
+        </template>
       </div>
     </template>
     </iron-collapse>
@@ -340,7 +347,8 @@
             type: Boolean,
             value: false
           },
-          _auxButtonText: String
+          _auxButtonText: String,
+          _groupButtonText: String
         },
         expandNode: function() {
           this.fire('_node.expand', this.node);
@@ -351,31 +359,100 @@
         _getNode: function(nodeName, graphHierarchy) {
           return graphHierarchy.node(nodeName);
         },
-        _getNodeName: function(nodeName) {
-          // Insert a zero-width whitespace character before each slash so that
+        _getPrintableHTMLNodeName: function(nodeName) {
+          // Insert an optional line break before each slash so that
           // long node names wrap cleanly at path boundaries.
-          return (nodeName || '').replace(/\//g, '\u200B/');
+          return (nodeName || '').replace(/\//g, '<wbr>/');
+        },
+        _getPredEdgeLabel: function(sourceName) {
+          return this._getEdgeLabel(sourceName, this.nodeName);
+        },
+        _getSuccEdgeLabel: function(destName) {
+          return this._getEdgeLabel(this.nodeName, destName);
+        },
+        _getEdgeLabel: function(sourceName, destName) {
+          if (!this._node) {
+            // The user clicked outside, thus no node is selected and
+            // the info card should be hidden.
+            return;
+          }
+          var parent = this._node.parentNode;
+          var sourceNode = this.graphHierarchy.node(sourceName);
+          if (!sourceNode.isGroupNode) {
+            // Show the tensor shape directly.
+            return tf.graph.scene.edge.getShapeLabelFromNode(sourceNode);
+          }
+          sourceName = this.renderHierarchy.getNearestVisibleAncestor(sourceName);
+          destName = this.renderHierarchy.getNearestVisibleAncestor(destName);
+          var metaedge = parent.metagraph.edge(sourceName, destName) ||
+              parent.bridgegraph.edge(sourceName, destName);
+          return tf.graph.scene.edge.getLabelForEdge(metaedge,
+              this.renderHierarchy);
         },
         _getRenderInfo: function(nodeName, renderHierarchy) {
           return this.renderHierarchy.getOrCreateRenderNodeByName(nodeName);
         },
         _getAttributes: function(node) {
           this.async(this._resizeList.bind(this, "#attributesList"));
-          return node && node.attr ? node.attr.map(function(entry) {
-            return {key: entry.key, value: JSON.stringify(entry.value)};
-          }) : [];
-
+          if (!node || !node.attr) {
+            return [];
+          }
+          var attrs = [];
+          _.each(node.attr, function(entry) {
+            // Unpack the "too large" attributes into separate attributes
+            // in the info card, with values "too large to show".
+            if (entry.key === tf.graph.LARGE_ATTRS_KEY) {
+              attrs = attrs.concat(entry.value.list.s.map(function(key) {
+                return {key: key, value: "Too large to show..."};
+              }));
+            } else {
+              attrs.push({
+                key: entry.key,
+                value: JSON.stringify(entry.value)
+              });
+            }
+          });
+          return attrs;
         },
         _getDevice: function(node) {
           return node ? node.device : null;
         },
         _getSuccessors: function(node, hierarchy) {
           this.async(this._resizeList.bind(this, "#inputsList"));
-          return node ? hierarchy.getSuccessors(node.name) : [[], []];
+          if (!node) {
+            return {regular: [], control: []}
+          }
+          return this._convertEdgeListToEdgeInfoList(
+            hierarchy.getSuccessors(node.name), false);
         },
         _getPredecessors: function(node, hierarchy) {
           this.async(this._resizeList.bind(this, "#outputsList"));
-          return node ? hierarchy.getPredecessors(node.name) : [[], []];
+          if (!node) {
+            return {regular: [], control: []}
+          }
+          return this._convertEdgeListToEdgeInfoList(
+            hierarchy.getPredecessors(node.name), true);
+        },
+        _convertEdgeListToEdgeInfoList: function(list, isPredecessor) {
+          return {
+            regular: list.regular.map(function(name) {
+              return {
+                name: name,
+                node: this._getNode(name, this.graphHierarchy),
+                edgeLabel: isPredecessor
+                  ? this._getPredEdgeLabel(name)
+                  : this._getSuccEdgeLabel(name),
+                renderInfo: this._getRenderInfo(name, this.renderHierarchy)
+              }
+            }, this),
+            control: list.control.map(function(name) {
+              return {
+                name: name,
+                node: this._getNode(name, this.graphHierarchy),
+                renderInfo: this._getRenderInfo(name, this.renderHierarchy)
+              }
+            }, this)
+          };
         },
         _getSubnodes: function(node) {
           return node && node.metagraph ? node.metagraph.nodes() : null;
@@ -401,6 +478,14 @@
         _resetState: function() {
           this._openedControlPred = false;
           this._openedControlSucc = false;
+
+          this.set("_groupButtonText",
+            tf.graph.scene.node.getGroupSettingLabel(this._node));
+
+          if (this._node) {
+            Polymer.dom(this.$.nodetitle).innerHTML =
+              this._getPrintableHTMLNodeName(this._node.name);
+          }
         },
         _resizeList: function(selector) {
           var list = document.querySelector(selector);
@@ -417,6 +502,14 @@
         _nodeIncludeStateChanged: function(include, oldInclude) {
           this.set("_auxButtonText",
             tf.graph.getIncludeNodeButtonString(include));
+        },
+        _toggleGroup: function() {
+          var graphElem = document.querySelector("#graph");
+          var seriesName = tf.graph.scene.node.getSeriesName(this._node);
+          graphElem.fire("node-toggle-seriesgroup", { name: seriesName });
+        },
+        _isInSeries: function(node) {
+          return tf.graph.scene.node.canBeInSeries(node);
         }
       });
     })();

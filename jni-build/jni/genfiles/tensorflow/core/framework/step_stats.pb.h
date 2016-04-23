@@ -26,8 +26,8 @@
 #include <google/protobuf/message.h>
 #include <google/protobuf/repeated_field.h>
 #include <google/protobuf/extension_set.h>
-#include <google/protobuf/generated_enum_reflection.h>
 #include <google/protobuf/unknown_field_set.h>
+#include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/tensor_description.pb.h"
 // @@protoc_insertion_point(includes)
 
@@ -44,29 +44,6 @@ class NodeExecStats;
 class NodeOutput;
 class StepStats;
 
-enum AllocationType {
-  AT_NOTUSED = 0,
-  AT_ALLOCATED = 1,
-  AT_EXISTING = 2,
-  AT_REF = 3,
-  AllocationType_INT_MIN_SENTINEL_DO_NOT_USE_ = ::google::protobuf::kint32min,
-  AllocationType_INT_MAX_SENTINEL_DO_NOT_USE_ = ::google::protobuf::kint32max
-};
-bool AllocationType_IsValid(int value);
-const AllocationType AllocationType_MIN = AT_NOTUSED;
-const AllocationType AllocationType_MAX = AT_REF;
-const int AllocationType_ARRAYSIZE = AllocationType_MAX + 1;
-
-const ::google::protobuf::EnumDescriptor* AllocationType_descriptor();
-inline const ::std::string& AllocationType_Name(AllocationType value) {
-  return ::google::protobuf::internal::NameOfEnum(
-    AllocationType_descriptor(), value);
-}
-inline bool AllocationType_Parse(
-    const ::std::string& name, AllocationType* value) {
-  return ::google::protobuf::internal::ParseNamedEnum<AllocationType>(
-    AllocationType_descriptor(), name, value);
-}
 // ===================================================================
 
 class AllocatorMemoryUsed : public ::google::protobuf::Message {
@@ -228,12 +205,6 @@ class NodeOutput : public ::google::protobuf::Message {
   ::google::protobuf::int32 slot() const;
   void set_slot(::google::protobuf::int32 value);
 
-  // optional .tensorflow.AllocationType allocation_type = 2;
-  void clear_allocation_type();
-  static const int kAllocationTypeFieldNumber = 2;
-  ::tensorflow::AllocationType allocation_type() const;
-  void set_allocation_type(::tensorflow::AllocationType value);
-
   // optional .tensorflow.TensorDescription tensor_description = 3;
   bool has_tensor_description() const;
   void clear_tensor_description();
@@ -248,9 +219,8 @@ class NodeOutput : public ::google::protobuf::Message {
 
   ::google::protobuf::internal::InternalMetadataWithArena _internal_metadata_;
   bool _is_default_instance_;
-  ::google::protobuf::int32 slot_;
-  int allocation_type_;
   ::tensorflow::TensorDescription* tensor_description_;
+  ::google::protobuf::int32 slot_;
   mutable int _cached_size_;
   friend void  protobuf_AddDesc_tensorflow_2fcore_2fframework_2fstep_5fstats_2eproto();
   friend void protobuf_AssignDesc_tensorflow_2fcore_2fframework_2fstep_5fstats_2eproto();
@@ -399,6 +369,18 @@ class NodeExecStats : public ::google::protobuf::Message {
   ::google::protobuf::uint32 thread_id() const;
   void set_thread_id(::google::protobuf::uint32 value);
 
+  // repeated .tensorflow.AllocationDescription referenced_tensor = 11;
+  int referenced_tensor_size() const;
+  void clear_referenced_tensor();
+  static const int kReferencedTensorFieldNumber = 11;
+  const ::tensorflow::AllocationDescription& referenced_tensor(int index) const;
+  ::tensorflow::AllocationDescription* mutable_referenced_tensor(int index);
+  ::tensorflow::AllocationDescription* add_referenced_tensor();
+  ::google::protobuf::RepeatedPtrField< ::tensorflow::AllocationDescription >*
+      mutable_referenced_tensor();
+  const ::google::protobuf::RepeatedPtrField< ::tensorflow::AllocationDescription >&
+      referenced_tensor() const;
+
   // @@protoc_insertion_point(class_scope:tensorflow.NodeExecStats)
  private:
 
@@ -413,6 +395,7 @@ class NodeExecStats : public ::google::protobuf::Message {
   ::google::protobuf::RepeatedPtrField< ::tensorflow::NodeOutput > output_;
   ::google::protobuf::internal::ArenaStringPtr timeline_label_;
   ::google::protobuf::int64 scheduled_micros_;
+  ::google::protobuf::RepeatedPtrField< ::tensorflow::AllocationDescription > referenced_tensor_;
   ::google::protobuf::uint32 thread_id_;
   mutable int _cached_size_;
   friend void  protobuf_AddDesc_tensorflow_2fcore_2fframework_2fstep_5fstats_2eproto();
@@ -699,20 +682,6 @@ inline void NodeOutput::set_slot(::google::protobuf::int32 value) {
   // @@protoc_insertion_point(field_set:tensorflow.NodeOutput.slot)
 }
 
-// optional .tensorflow.AllocationType allocation_type = 2;
-inline void NodeOutput::clear_allocation_type() {
-  allocation_type_ = 0;
-}
-inline ::tensorflow::AllocationType NodeOutput::allocation_type() const {
-  // @@protoc_insertion_point(field_get:tensorflow.NodeOutput.allocation_type)
-  return static_cast< ::tensorflow::AllocationType >(allocation_type_);
-}
-inline void NodeOutput::set_allocation_type(::tensorflow::AllocationType value) {
-  
-  allocation_type_ = value;
-  // @@protoc_insertion_point(field_set:tensorflow.NodeOutput.allocation_type)
-}
-
 // optional .tensorflow.TensorDescription tensor_description = 3;
 inline bool NodeOutput::has_tensor_description() const {
   return !_is_default_instance_ && tensor_description_ != NULL;
@@ -984,6 +953,36 @@ inline void NodeExecStats::set_thread_id(::google::protobuf::uint32 value) {
   // @@protoc_insertion_point(field_set:tensorflow.NodeExecStats.thread_id)
 }
 
+// repeated .tensorflow.AllocationDescription referenced_tensor = 11;
+inline int NodeExecStats::referenced_tensor_size() const {
+  return referenced_tensor_.size();
+}
+inline void NodeExecStats::clear_referenced_tensor() {
+  referenced_tensor_.Clear();
+}
+inline const ::tensorflow::AllocationDescription& NodeExecStats::referenced_tensor(int index) const {
+  // @@protoc_insertion_point(field_get:tensorflow.NodeExecStats.referenced_tensor)
+  return referenced_tensor_.Get(index);
+}
+inline ::tensorflow::AllocationDescription* NodeExecStats::mutable_referenced_tensor(int index) {
+  // @@protoc_insertion_point(field_mutable:tensorflow.NodeExecStats.referenced_tensor)
+  return referenced_tensor_.Mutable(index);
+}
+inline ::tensorflow::AllocationDescription* NodeExecStats::add_referenced_tensor() {
+  // @@protoc_insertion_point(field_add:tensorflow.NodeExecStats.referenced_tensor)
+  return referenced_tensor_.Add();
+}
+inline ::google::protobuf::RepeatedPtrField< ::tensorflow::AllocationDescription >*
+NodeExecStats::mutable_referenced_tensor() {
+  // @@protoc_insertion_point(field_mutable_list:tensorflow.NodeExecStats.referenced_tensor)
+  return &referenced_tensor_;
+}
+inline const ::google::protobuf::RepeatedPtrField< ::tensorflow::AllocationDescription >&
+NodeExecStats::referenced_tensor() const {
+  // @@protoc_insertion_point(field_list:tensorflow.NodeExecStats.referenced_tensor)
+  return referenced_tensor_;
+}
+
 // -------------------------------------------------------------------
 
 // DeviceStepStats
@@ -1108,20 +1107,6 @@ StepStats::dev_stats() const {
 // @@protoc_insertion_point(namespace_scope)
 
 }  // namespace tensorflow
-
-#ifndef SWIG
-namespace google {
-namespace protobuf {
-
-template <> struct is_proto_enum< ::tensorflow::AllocationType> : ::google::protobuf::internal::true_type {};
-template <>
-inline const EnumDescriptor* GetEnumDescriptor< ::tensorflow::AllocationType>() {
-  return ::tensorflow::AllocationType_descriptor();
-}
-
-}  // namespace protobuf
-}  // namespace google
-#endif  // SWIG
 
 // @@protoc_insertion_point(global_scope)
 

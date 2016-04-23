@@ -14,7 +14,7 @@ import tensorflow as tf
 import numpy as np
 
 # Create 100 phony x, y data points in NumPy, y = x * 0.1 + 0.3
-x_data = np.random.rand(100).astype("float32")
+x_data = np.random.rand(100).astype(np.float32)
 y_data = x_data * 0.1 + 0.3
 
 # Try to find values for W and b that compute y_data = W * x_data + b
@@ -37,7 +37,7 @@ sess = tf.Session()
 sess.run(init)
 
 # Fit the line.
-for step in xrange(201):
+for step in range(201):
     sess.run(train)
     if step % 20 == 0:
         print(step, sess.run(W), sess.run(b))
@@ -77,3 +77,4 @@ TensorFlow features.
 * [Download and Setup](../get_started/os_setup.md)
 * [Basic Usage](../get_started/basic_usage.md)
 * [TensorFlow Mechanics 101](../tutorials/mnist/tf/index.md)
+* [Tinker with a neural network in your browser](http://playground.tensorflow.org)

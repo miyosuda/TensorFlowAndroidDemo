@@ -7,6 +7,7 @@
 #include <algorithm>
 
 #include <google/protobuf/stubs/common.h>
+#include <google/protobuf/stubs/port.h>
 #include <google/protobuf/stubs/once.h>
 #include <google/protobuf/io/coded_stream.h>
 #include <google/protobuf/wire_format_lite_inl.h>
@@ -133,7 +134,9 @@ void protobuf_AddDesc_tensorflow_2fcore_2fexample_2fexample_2eproto() {
     "/\n\rfeature_lists\030\002 \001(\0132\030.tensorflow.Feat"
     "ureLists\"a\n\020InferenceExample\022%\n\007context\030"
     "\001 \001(\0132\024.tensorflow.Features\022&\n\010features\030"
-    "\002 \003(\0132\024.tensorflow.Featuresb\006proto3", 355);
+    "\002 \003(\0132\024.tensorflow.FeaturesB,\n\026org.tenso"
+    "rflow.exampleB\rExampleProtosP\001\240\001\001b\006proto"
+    "3", 401);
   ::google::protobuf::MessageFactory::InternalRegisterGeneratedFile(
     "tensorflow/core/example/example.proto", &protobuf_RegisterTypes);
   Example::default_instance_ = new Example();

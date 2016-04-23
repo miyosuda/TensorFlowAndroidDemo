@@ -19,11 +19,11 @@ represent words as vectors.
 
 We walk through the code later during the tutorial, but if you'd prefer to dive
 straight in, feel free to look at the minimalistic implementation in
-[tensorflow/examples/tutorials/word2vec/word2vec_basic.py](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/examples/tutorials/word2vec/word2vec_basic.py)
+[tensorflow/examples/tutorials/word2vec/word2vec_basic.py](https://www.tensorflow.org/code/tensorflow/examples/tutorials/word2vec/word2vec_basic.py)
 This basic example contains the code needed to download some data, train on it a
 bit and visualize the result. Once you get comfortable with reading and running
 the basic version, you can graduate to
-[tensorflow/models/embedding/word2vec.py](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/models/embedding/word2vec.py)
+[tensorflow/models/embedding/word2vec.py](https://www.tensorflow.org/code/tensorflow/models/embedding/word2vec.py)
 which is a more serious implementation that showcases some more advanced
 TensorFlow principles about how to efficiently use threads to move data into a
 text model, how to checkpoint during training, etc.
@@ -78,7 +78,7 @@ model).
 
 Word2vec is a particularly computationally-efficient predictive model for
 learning word embeddings from raw text. It comes in two flavors, the Continuous
-Bag-of-Words model (CBOW) and the Skip-Gram model. Algorithmically, these
+Bag-of-Words model (CBOW) and the Skip-Gram model (Chapter 3.1 and 3.2 in [Mikolov et al.](http://arxiv.org/pdf/1301.3781.pdf)). Algorithmically, these
 models are similar, except that CBOW predicts target words (e.g. 'mat') from
 source context words ('the cat sits on the'), while the skip-gram does the
 inverse and predicts source context-words from the target words. This inversion
@@ -108,7 +108,8 @@ $$
 
 where \\(\text{score}(w\_t, h)\\) computes the compatibility of word \\(w\_t\\)
 with the context \\(h\\) (a dot product is commonly used). We train this model
-by maximizing its log-likelihood on the training set, i.e. by maximizing
+by maximizing its [log-likelihood](https://en.wikipedia.org/wiki/Likelihood_function) 
+on the training set, i.e. by maximizing
 
 $$
 \begin{align}
@@ -129,8 +130,8 @@ context \\(h\\), *at every training step*.
 
 On the other hand, for feature learning in word2vec we do not need a full
 probabilistic model. The CBOW and skip-gram models are instead trained using a
-binary classification objective (logistic regression) to discriminate the real
-target words \\(w_t\\) from \\(k\\) imaginary (noise) words \\(\tilde w\\), in the
+binary classification objective ([logistic regression](https://en.wikipedia.org/wiki/Logistic_regression)) 
+to discriminate the real target words \\(w_t\\) from \\(k\\) imaginary (noise) words \\(\tilde w\\), in the
 same context. We illustrate this below for a CBOW model. For skip-gram the
 direction is simply inverted.
 
@@ -207,7 +208,7 @@ loss for this pair of observed and noisy examples, i.e. the objective at time
 step \\(t\\) becomes
 
 $$J^{(t)}_\text{NEG} = \log Q_\theta(D=1 | \text{the, quick}) +
-  \log(Q_\theta(D=0 | \text{sheep, quick}))$$.
+  \log(Q_\theta(D=0 | \text{sheep, quick}))$$
 
 The goal is to make an update to the embedding parameters \\(\theta\\) to improve
 (in this case, maximize) this objective function.  We do this by deriving the
@@ -238,8 +239,9 @@ below (see also for example
 This explains why these vectors are also useful as features for many canonical
 NLP prediction tasks, such as part-of-speech tagging or named entity recognition
 (see for example the original work by
-[Collobert et al.](http://arxiv.org/pdf/1103.0398v1.pdf), or follow-up work by
-[Turian et al.](http://www.aclweb.org/anthology/P10-1040)).
+[Collobert et al., 2011](http://arxiv.org/abs/1103.0398)
+([pdf](http://arxiv.org/pdf/1103.0398.pdf)), or follow-up work by
+[Turian et al., 2010](http://www.aclweb.org/anthology/P10-1040)).
 
 But for now, let's just use them to draw pretty pictures!
 
@@ -254,7 +256,7 @@ embeddings = tf.Variable(
     tf.random_uniform([vocabulary_size, embedding_size], -1.0, 1.0))
 ```
 
-The noise-contrastive estimation loss is defined in terms a logistic regression
+The noise-contrastive estimation loss is defined in terms of a logistic regression
 model. For this, we need to define the weights and biases for each word in the
 vocabulary (also called the `output weights` as opposed to the `input
 embeddings`). So let's define that.
@@ -269,7 +271,7 @@ nce_biases = tf.Variable(tf.zeros([vocabulary_size]))
 Now that we have the parameters in place, we can define our skip-gram model
 graph. For simplicity, let's suppose we've already integerized our text corpus
 with a vocabulary so that each word is represented as an integer (see
-[tensorflow/examples/tutorials/word2vec/word2vec_basic.py](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/examples/tutorials/word2vec/word2vec_basic.py)
+[tensorflow/examples/tutorials/word2vec/word2vec_basic.py](https://www.tensorflow.org/code/tensorflow/examples/tutorials/word2vec/word2vec_basic.py)
 for the details). The skip-gram model takes two inputs. One is a batch full of
 integers representing the source context words, the other is for the target
 words. Let's create placeholder nodes for these inputs, so that we can feed in
@@ -321,7 +323,7 @@ for inputs, labels in generate_batch(...):
 ```
 
 See the full example code in
-[tensorflow/examples/tutorials/word2vec/word2vec_basic.py](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/examples/tutorials/word2vec/word2vec_basic.py).
+[tensorflow/examples/tutorials/word2vec/word2vec_basic.py](https://www.tensorflow.org/code/tensorflow/examples/tutorials/word2vec/word2vec_basic.py).
 
 ## Visualizing the Learned Embeddings
 
@@ -335,7 +337,7 @@ t-SNE.
 Et voila! As expected, words that are similar end up clustering nearby each
 other. For a more heavyweight implementation of word2vec that showcases more of
 the advanced features of TensorFlow, see the implementation in
-[tensorflow/models/embedding/word2vec.py](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/models/embedding/word2vec.py).
+[tensorflow/models/embedding/word2vec.py](https://www.tensorflow.org/code/tensorflow/models/embedding/word2vec.py).
 
 ## Evaluating Embeddings: Analogical Reasoning
 
@@ -350,7 +352,7 @@ https://word2vec.googlecode.com/svn/trunk/questions-words.txt.
 
 To see how we do this evaluation, have a look at the `build_eval_graph()` and
 `eval()` functions in
-[tensorflow/models/embedding/word2vec.py](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/models/embedding/word2vec.py).
+[tensorflow/models/embedding/word2vec.py](https://www.tensorflow.org/code/tensorflow/models/embedding/word2vec.py).
 
 The choice of hyperparameters can strongly influence the accuracy on this task.
 To achieve state-of-the-art performance on this task requires training over a
@@ -378,13 +380,13 @@ your model is seriously bottlenecked on input data, you may want to implement a
 custom data reader for your problem, as described in
 [New Data Formats](../../how_tos/new_data_formats/index.md).  For the case of Skip-Gram
 modeling, we've actually already done this for you as an example in
-[tensorflow/models/embedding/word2vec.py](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/models/embedding/word2vec.py).
+[tensorflow/models/embedding/word2vec.py](https://www.tensorflow.org/code/tensorflow/models/embedding/word2vec.py).
 
 If your model is no longer I/O bound but you want still more performance, you
 can take things further by writing your own TensorFlow Ops, as described in
 [Adding a New Op](../../how_tos/adding_an_op/index.md).  Again we've provided an
 example of this for the Skip-Gram case
-[tensorflow/models/embedding/word2vec_optimized.py](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/models/embedding/word2vec_optimized.py).
+[tensorflow/models/embedding/word2vec_optimized.py](https://www.tensorflow.org/code/tensorflow/models/embedding/word2vec_optimized.py).
 Feel free to benchmark these against each other to measure performance
 improvements at each stage.
 

@@ -19,8 +19,9 @@ limitations under the License.
 #include "tensorflow/core/lib/io/table_builder.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/public/env.h"
+#include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/saved_tensor_slice_util.h"
 
 namespace tensorflow {
@@ -31,10 +32,11 @@ namespace {
 
 class TableBuilder : public TensorSliceWriter::Builder {
  public:
-  TableBuilder(const string& name, WritableFile* f)
-      : name_(name),
-        file_(f),
-        builder_(new table::TableBuilder(table::Options(), f)) {}
+  TableBuilder(const string& name, WritableFile* f) : name_(name), file_(f) {
+    table::Options option;
+    option.compression = table::kNoCompression;
+    builder_.reset(new table::TableBuilder(option, f));
+  }
   void Add(StringPiece key, StringPiece val) override {
     builder_->Add(key, val);
   }
@@ -81,7 +83,11 @@ TensorSliceWriter::TensorSliceWriter(const string& filename,
     : filename_(filename),
       create_builder_(create_builder),
       tmpname_(strings::StrCat(filename, ".tempstate", random::New64())),
-      slices_(0) {}
+      slices_(0) {
+  VersionDef* versions = sts_.mutable_meta()->mutable_versions();
+  versions->set_producer(TF_CHECKPOINT_VERSION);
+  versions->set_min_consumer(TF_CHECKPOINT_VERSION_MIN_CONSUMER);
+}
 
 Status TensorSliceWriter::Finish() {
   Builder* b;

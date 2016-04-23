@@ -15,9 +15,9 @@
 
 """Updates generated docs from Python doc comments.
 
-Both updates the files in the file-system and executes g4 commands to
-make sure any changes are ready to be submitted.
+Updates the documentation files.
 """
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -98,21 +98,27 @@ class Index(Document):
           print("  * %s" % link, file=f)
         print("", file=f)
 
-def collect_members(module_to_name):
+
+def collect_members(module_to_name, exclude=()):
   """Collect all symbols from a list of modules.
 
   Args:
     module_to_name: Dictionary mapping modules to short names.
+    exclude: Set of fully qualified names to exclude.
 
   Returns:
     Dictionary mapping name to (fullname, member) pairs.
   """
   members = {}
   for module, module_name in module_to_name.items():
+    all_names = getattr(module, "__all__", None)
     for name, member in inspect.getmembers(module):
       if ((inspect.isfunction(member) or inspect.isclass(member)) and
-          not _always_drop_symbol_re.match(name)):
+          not _always_drop_symbol_re.match(name) and
+          (all_names is None or name in all_names)):
         fullname = '%s.%s' % (module_name, name)
+        if fullname in exclude:
+          continue
         if name in members:
           other_fullname, other_member = members[name]
           if member is not other_member:
@@ -121,7 +127,7 @@ def collect_members(module_to_name):
           if len(fullname) == len(other_fullname):
             raise RuntimeError("Can't decide whether to use %s or %s for %s: "
                                "both full names have length %d" %
-                               (fullname, other_fullname, len(fullname)))
+                               (fullname, other_fullname, name, len(fullname)))
           if len(fullname) > len(other_fullname):
             continue  # Use the shorter full name
         members[name] = fullname, member
@@ -264,7 +270,10 @@ class Library(Document):
     if argspec.defaults:
       for arg, default in zip(
           argspec.args[first_arg_with_default:], argspec.defaults):
-        args_list.append("%s=%r" % (arg, default))
+        if callable(default):
+          args_list.append("%s=%s" % (arg, default.__name__))
+        else:
+          args_list.append("%s=%r" % (arg, default))
     if argspec.varargs:
       args_list.append("*" + argspec.varargs)
     if argspec.keywords:
@@ -405,7 +414,7 @@ class Library(Document):
         print(l, file=f)
 
   def _write_class_markdown_to_file(self, f, name, cls):
-    """Write the class doc to 'f'.
+    """Write the class doc to `f`.
 
     Args:
       f: File to write to.
@@ -478,6 +487,9 @@ class Library(Document):
       names = self._members.items()
     else:
       names = inspect.getmembers(self._module)
+      all_names = getattr(self._module, "__all__", None)
+      if all_names is not None:
+        names = [(n, m) for n, m in names if n in all_names]
     leftovers = []
     for name, _ in names:
       if name in self._members and name not in self._documented:

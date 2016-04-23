@@ -22,8 +22,6 @@ import sys
 import threading
 import time
 
-import tensorflow.python.platform
-
 import tensorflow as tf
 
 
@@ -117,6 +115,18 @@ class CoordinatorTest(tf.test.TestCase):
       t.start()
     with self.assertRaisesRegexp(RuntimeError, "First"):
       coord.join(threads)
+
+  def testJoinIgnoresOutOfRange(self):
+    coord = tf.train.Coordinator()
+    threads = [
+        threading.Thread(target=RaiseInN,
+                         args=(coord, 0.01,
+                               tf.errors.OutOfRangeError(None, None, "First"),
+                               True))
+        ]
+    for t in threads:
+      t.start()
+    coord.join(threads)
 
   def testJoinRaiseReportExceptionUsingHandler(self):
     coord = tf.train.Coordinator()

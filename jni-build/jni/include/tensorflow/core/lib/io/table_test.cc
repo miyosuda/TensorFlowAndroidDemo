@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <map>
 #include <string>
-#include <gtest/gtest.h>
+#include <vector>
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/block.h"
 #include "tensorflow/core/lib/io/block_builder.h"
@@ -26,8 +26,9 @@ limitations under the License.
 #include "tensorflow/core/lib/io/table_builder.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/snappy.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/public/env.h"
 
 namespace tensorflow {
 namespace table {
@@ -580,9 +581,9 @@ TEST(TableTest, ApproximateOffsetOfCompressed) {
   ASSERT_TRUE(Between(c.ApproximateOffsetOf("abc"), 0, 0));
   ASSERT_TRUE(Between(c.ApproximateOffsetOf("k01"), 0, 0));
   ASSERT_TRUE(Between(c.ApproximateOffsetOf("k02"), 10, 100));
-  ASSERT_TRUE(Between(c.ApproximateOffsetOf("k03"), 2000, 3000));
-  ASSERT_TRUE(Between(c.ApproximateOffsetOf("k04"), 2000, 3000));
-  ASSERT_TRUE(Between(c.ApproximateOffsetOf("xyz"), 4000, 6000));
+  ASSERT_TRUE(Between(c.ApproximateOffsetOf("k03"), 2000, 4000));
+  ASSERT_TRUE(Between(c.ApproximateOffsetOf("k04"), 2000, 4000));
+  ASSERT_TRUE(Between(c.ApproximateOffsetOf("xyz"), 4000, 7000));
 }
 
 TEST(TableTest, SeekToFirstKeyDoesNotReadTooMuch) {

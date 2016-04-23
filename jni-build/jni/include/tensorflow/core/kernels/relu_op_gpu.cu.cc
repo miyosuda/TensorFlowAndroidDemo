@@ -19,7 +19,7 @@ limitations under the License.
 
 #include <stdio.h>
 
-#include "tensorflow/core/kernels/relu_op.h"
+#include "tensorflow/core/kernels/relu_op_functor.h"
 
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -35,7 +35,7 @@ typedef Eigen::GpuDevice GPUDevice;
   template struct functor::Relu6<GPUDevice, T>;     \
   template struct functor::Relu6Grad<GPUDevice, T>; \
   template struct functor::Elu<GPUDevice, T>;       \
-  template struct functor::EluGrad<GPUDevice, T>
+  template struct functor::EluGrad<GPUDevice, T>;
 
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_KERNELS);
 

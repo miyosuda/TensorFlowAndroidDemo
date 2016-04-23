@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/lib/strings/numbers.h"
 
+#include <ctype.h>
 #include <float.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,7 +23,8 @@ limitations under the License.
 #include <cmath>
 
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace strings {
@@ -32,7 +34,7 @@ char* FastInt32ToBufferLeft(int32 i, char* buffer) {
   if (i < 0) {
     *buffer++ = '-';
     // We need to do the negation in modular (i.e., "unsigned")
-    // arithmetic; MSVC++ apprently warns for plain "-u", so
+    // arithmetic; MSVC++ apparently warns for plain "-u", so
     // we write the equivalent expression "0 - u" instead.
     u = 0 - u;
   }
@@ -101,91 +103,142 @@ char* DoubleToBuffer(double value, char* buffer) {
   return buffer;
 }
 
-bool safe_strto64(const char* str, int64* value) {
-  if (!str) return false;
+namespace {
+char SafeFirstChar(StringPiece str) {
+  if (str.empty()) return '\0';
+  return str[0];
+}
+void SkipSpaces(StringPiece* str) {
+  while (isspace(SafeFirstChar(*str))) str->remove_prefix(1);
+}
+}  // namespace
 
-  // Skip leading space.
-  while (isspace(*str)) ++str;
+bool safe_strto64(StringPiece str, int64* value) {
+  SkipSpaces(&str);
 
   int64 vlimit = kint64max;
   int sign = 1;
-  if (*str == '-') {
+  if (str.Consume("-")) {
     sign = -1;
-    ++str;
     // Different limit for positive and negative integers.
     vlimit = kint64min;
   }
 
-  if (!isdigit(*str)) return false;
+  if (!isdigit(SafeFirstChar(str))) return false;
 
   int64 result = 0;
   if (sign == 1) {
     do {
-      int digit = *str - '0';
+      int digit = SafeFirstChar(str) - '0';
       if ((vlimit - digit) / 10 < result) {
         return false;
       }
       result = result * 10 + digit;
-      ++str;
-    } while (isdigit(*str));
+      str.remove_prefix(1);
+    } while (isdigit(SafeFirstChar(str)));
   } else {
     do {
-      int digit = *str - '0';
+      int digit = SafeFirstChar(str) - '0';
       if ((vlimit + digit) / 10 > result) {
         return false;
       }
       result = result * 10 - digit;
-      ++str;
-    } while (isdigit(*str));
+      str.remove_prefix(1);
+    } while (isdigit(SafeFirstChar(str)));
   }
 
-  // Skip trailing space.
-  while (isspace(*str)) ++str;
-
-  if (*str) return false;
+  SkipSpaces(&str);
+  if (!str.empty()) return false;
 
   *value = result;
   return true;
 }
 
-bool safe_strto32(const char* str, int32* value) {
-  if (!str) return false;
+bool safe_strtou64(StringPiece str, uint64* value) {
+  SkipSpaces(&str);
+  if (!isdigit(SafeFirstChar(str))) return false;
 
-  // Skip leading space.
-  while (isspace(*str)) ++str;
+  int64 result = 0;
+  do {
+    int digit = SafeFirstChar(str) - '0';
+    if ((kuint64max - digit) / 10 < result) {
+      return false;
+    }
+    result = result * 10 + digit;
+    str.remove_prefix(1);
+  } while (isdigit(SafeFirstChar(str)));
+
+  SkipSpaces(&str);
+  if (!str.empty()) return false;
+
+  *value = result;
+  return true;
+}
+
+bool safe_strto32(StringPiece str, int32* value) {
+  SkipSpaces(&str);
 
   int64 vmax = kint32max;
   int sign = 1;
-  if (*str == '-') {
+  if (str.Consume("-")) {
     sign = -1;
-    ++str;
     // Different max for positive and negative integers.
     ++vmax;
   }
 
-  if (!isdigit(*str)) return false;
+  if (!isdigit(SafeFirstChar(str))) return false;
 
   int64 result = 0;
   do {
-    result = result * 10 + *str - '0';
+    result = result * 10 + SafeFirstChar(str) - '0';
     if (result > vmax) {
       return false;
     }
-    ++str;
-  } while (isdigit(*str));
+    str.remove_prefix(1);
+  } while (isdigit(SafeFirstChar(str)));
 
-  // Skip trailing space.
-  while (isspace(*str)) ++str;
+  SkipSpaces(&str);
 
-  if (*str) return false;
+  if (!str.empty()) return false;
 
   *value = result * sign;
+  return true;
+}
+
+bool safe_strtou32(StringPiece str, uint32* value) {
+  SkipSpaces(&str);
+  if (!isdigit(SafeFirstChar(str))) return false;
+
+  int64 result = 0;
+  do {
+    result = result * 10 + SafeFirstChar(str) - '0';
+    if (result > kuint32max) {
+      return false;
+    }
+    str.remove_prefix(1);
+  } while (isdigit(SafeFirstChar(str)));
+
+  SkipSpaces(&str);
+  if (!str.empty()) return false;
+
+  *value = result;
   return true;
 }
 
 bool safe_strtof(const char* str, float* value) {
   char* endptr;
   *value = strtof(str, &endptr);
+  while (isspace(*endptr)) ++endptr;
+  // Ignore range errors from strtod/strtof.
+  // The values it returns on underflow and
+  // overflow are the right fallback in a
+  // robust setting.
+  return *str != '\0' && *endptr == '\0';
+}
+
+bool safe_strtod(const char* str, double* value) {
+  char* endptr;
+  *value = strtod(str, &endptr);
   while (isspace(*endptr)) ++endptr;
   // Ignore range errors from strtod/strtof.
   // The values it returns on underflow and
@@ -234,6 +287,38 @@ bool StringToFp(const string& s, Fprint* fp) {
   } else {
     return false;
   }
+}
+
+StringPiece Uint64ToHexString(uint64 v, char* buf) {
+  static const char* hexdigits = "0123456789abcdef";
+  const int num_byte = 16;
+  buf[num_byte] = '\0';
+  for (int i = num_byte - 1; i >= 0; i--) {
+    buf[i] = hexdigits[v & 0xf];
+    v >>= 4;
+  }
+  return StringPiece(buf, num_byte);
+}
+
+bool HexStringToUint64(const StringPiece& s, uint64* result) {
+  uint64 v = 0;
+  if (s.empty()) {
+    return false;
+  }
+  for (size_t i = 0; i < s.size(); i++) {
+    char c = s[i];
+    if (c >= '0' && c <= '9') {
+      v = (v << 4) + (c - '0');
+    } else if (c >= 'a' && c <= 'f') {
+      v = (v << 4) + 10 + (c - 'a');
+    } else if (c >= 'A' && c <= 'F') {
+      v = (v << 4) + 10 + (c - 'A');
+    } else {
+      return false;
+    }
+  }
+  *result = v;
+  return true;
 }
 
 string HumanReadableNumBytes(int64 num_bytes) {

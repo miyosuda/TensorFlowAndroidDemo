@@ -7,6 +7,7 @@
 #include <algorithm>
 
 #include <google/protobuf/stubs/common.h>
+#include <google/protobuf/stubs/port.h>
 #include <google/protobuf/stubs/once.h>
 #include <google/protobuf/io/coded_stream.h>
 #include <google/protobuf/wire_format_lite_inl.h>
@@ -35,7 +36,6 @@ const ::google::protobuf::internal::GeneratedMessageReflection*
 const ::google::protobuf::Descriptor* StepStats_descriptor_ = NULL;
 const ::google::protobuf::internal::GeneratedMessageReflection*
   StepStats_reflection_ = NULL;
-const ::google::protobuf::EnumDescriptor* AllocationType_descriptor_ = NULL;
 
 }  // namespace
 
@@ -64,9 +64,8 @@ void protobuf_AssignDesc_tensorflow_2fcore_2fframework_2fstep_5fstats_2eproto() 
       GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(AllocatorMemoryUsed, _internal_metadata_),
       GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(AllocatorMemoryUsed, _is_default_instance_));
   NodeOutput_descriptor_ = file->message_type(1);
-  static const int NodeOutput_offsets_[3] = {
+  static const int NodeOutput_offsets_[2] = {
     GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(NodeOutput, slot_),
-    GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(NodeOutput, allocation_type_),
     GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(NodeOutput, tensor_description_),
   };
   NodeOutput_reflection_ =
@@ -81,7 +80,7 @@ void protobuf_AssignDesc_tensorflow_2fcore_2fframework_2fstep_5fstats_2eproto() 
       GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(NodeOutput, _internal_metadata_),
       GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(NodeOutput, _is_default_instance_));
   NodeExecStats_descriptor_ = file->message_type(2);
-  static const int NodeExecStats_offsets_[10] = {
+  static const int NodeExecStats_offsets_[11] = {
     GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(NodeExecStats, node_name_),
     GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(NodeExecStats, all_start_micros_),
     GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(NodeExecStats, op_start_rel_micros_),
@@ -92,6 +91,7 @@ void protobuf_AssignDesc_tensorflow_2fcore_2fframework_2fstep_5fstats_2eproto() 
     GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(NodeExecStats, timeline_label_),
     GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(NodeExecStats, scheduled_micros_),
     GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(NodeExecStats, thread_id_),
+    GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(NodeExecStats, referenced_tensor_),
   };
   NodeExecStats_reflection_ =
     ::google::protobuf::internal::GeneratedMessageReflection::NewGeneratedMessageReflection(
@@ -135,7 +135,6 @@ void protobuf_AssignDesc_tensorflow_2fcore_2fframework_2fstep_5fstats_2eproto() 
       sizeof(StepStats),
       GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(StepStats, _internal_metadata_),
       GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(StepStats, _is_default_instance_));
-  AllocationType_descriptor_ = file->enum_type(0);
 }
 
 namespace {
@@ -181,30 +180,32 @@ void protobuf_AddDesc_tensorflow_2fcore_2fframework_2fstep_5fstats_2eproto() {
   already_here = true;
   GOOGLE_PROTOBUF_VERIFY_VERSION;
 
+  ::tensorflow::protobuf_AddDesc_tensorflow_2fcore_2fframework_2fallocation_5fdescription_2eproto();
   ::tensorflow::protobuf_AddDesc_tensorflow_2fcore_2fframework_2ftensor_5fdescription_2eproto();
   ::google::protobuf::DescriptorPool::InternalAddGeneratedFile(
     "\n*tensorflow/core/framework/step_stats.p"
-    "roto\022\ntensorflow\0322tensorflow/core/framew"
-    "ork/tensor_description.proto\"V\n\023Allocato"
-    "rMemoryUsed\022\026\n\016allocator_name\030\001 \001(\t\022\023\n\013t"
-    "otal_bytes\030\002 \001(\003\022\022\n\npeak_bytes\030\003 \001(\003\"\212\001\n"
-    "\nNodeOutput\022\014\n\004slot\030\001 \001(\005\0223\n\017allocation_"
-    "type\030\002 \001(\0162\032.tensorflow.AllocationType\0229"
-    "\n\022tensor_description\030\003 \001(\0132\035.tensorflow."
-    "TensorDescription\"\256\002\n\rNodeExecStats\022\021\n\tn"
-    "ode_name\030\001 \001(\t\022\030\n\020all_start_micros\030\002 \001(\003"
-    "\022\033\n\023op_start_rel_micros\030\003 \001(\003\022\031\n\021op_end_"
-    "rel_micros\030\004 \001(\003\022\032\n\022all_end_rel_micros\030\005"
-    " \001(\003\022/\n\006memory\030\006 \003(\0132\037.tensorflow.Alloca"
-    "torMemoryUsed\022&\n\006output\030\007 \003(\0132\026.tensorfl"
-    "ow.NodeOutput\022\026\n\016timeline_label\030\010 \001(\t\022\030\n"
-    "\020scheduled_micros\030\t \001(\003\022\021\n\tthread_id\030\n \001"
-    "(\r\"P\n\017DeviceStepStats\022\016\n\006device\030\001 \001(\t\022-\n"
-    "\nnode_stats\030\002 \003(\0132\031.tensorflow.NodeExecS"
-    "tats\";\n\tStepStats\022.\n\tdev_stats\030\001 \003(\0132\033.t"
-    "ensorflow.DeviceStepStats*O\n\016AllocationT"
-    "ype\022\016\n\nAT_NOTUSED\020\000\022\020\n\014AT_ALLOCATED\020\001\022\017\n"
-    "\013AT_EXISTING\020\002\022\n\n\006AT_REF\020\003b\006proto3", 874);
+    "roto\022\ntensorflow\0326tensorflow/core/framew"
+    "ork/allocation_description.proto\0322tensor"
+    "flow/core/framework/tensor_description.p"
+    "roto\"V\n\023AllocatorMemoryUsed\022\026\n\016allocator"
+    "_name\030\001 \001(\t\022\023\n\013total_bytes\030\002 \001(\003\022\022\n\npeak"
+    "_bytes\030\003 \001(\003\"U\n\nNodeOutput\022\014\n\004slot\030\001 \001(\005"
+    "\0229\n\022tensor_description\030\003 \001(\0132\035.tensorflo"
+    "w.TensorDescription\"\354\002\n\rNodeExecStats\022\021\n"
+    "\tnode_name\030\001 \001(\t\022\030\n\020all_start_micros\030\002 \001"
+    "(\003\022\033\n\023op_start_rel_micros\030\003 \001(\003\022\031\n\021op_en"
+    "d_rel_micros\030\004 \001(\003\022\032\n\022all_end_rel_micros"
+    "\030\005 \001(\003\022/\n\006memory\030\006 \003(\0132\037.tensorflow.Allo"
+    "catorMemoryUsed\022&\n\006output\030\007 \003(\0132\026.tensor"
+    "flow.NodeOutput\022\026\n\016timeline_label\030\010 \001(\t\022"
+    "\030\n\020scheduled_micros\030\t \001(\003\022\021\n\tthread_id\030\n"
+    " \001(\r\022<\n\021referenced_tensor\030\013 \003(\0132!.tensor"
+    "flow.AllocationDescription\"P\n\017DeviceStep"
+    "Stats\022\016\n\006device\030\001 \001(\t\022-\n\nnode_stats\030\002 \003("
+    "\0132\031.tensorflow.NodeExecStats\";\n\tStepStat"
+    "s\022.\n\tdev_stats\030\001 \003(\0132\033.tensorflow.Device"
+    "StepStatsB-\n\030org.tensorflow.frameworkB\017S"
+    "tepStatsProtosP\001b\006proto3", 904);
   ::google::protobuf::MessageFactory::InternalRegisterGeneratedFile(
     "tensorflow/core/framework/step_stats.proto", &protobuf_RegisterTypes);
   AllocatorMemoryUsed::default_instance_ = new AllocatorMemoryUsed();
@@ -226,22 +227,6 @@ struct StaticDescriptorInitializer_tensorflow_2fcore_2fframework_2fstep_5fstats_
     protobuf_AddDesc_tensorflow_2fcore_2fframework_2fstep_5fstats_2eproto();
   }
 } static_descriptor_initializer_tensorflow_2fcore_2fframework_2fstep_5fstats_2eproto_;
-const ::google::protobuf::EnumDescriptor* AllocationType_descriptor() {
-  protobuf_AssignDescriptorsOnce();
-  return AllocationType_descriptor_;
-}
-bool AllocationType_IsValid(int value) {
-  switch(value) {
-    case 0:
-    case 1:
-    case 2:
-    case 3:
-      return true;
-    default:
-      return false;
-  }
-}
-
 
 namespace {
 
@@ -645,7 +630,6 @@ void AllocatorMemoryUsed::clear_peak_bytes() {
 
 #if !defined(_MSC_VER) || _MSC_VER >= 1900
 const int NodeOutput::kSlotFieldNumber;
-const int NodeOutput::kAllocationTypeFieldNumber;
 const int NodeOutput::kTensorDescriptionFieldNumber;
 #endif  // !defined(_MSC_VER) || _MSC_VER >= 1900
 
@@ -672,7 +656,6 @@ void NodeOutput::SharedCtor() {
     _is_default_instance_ = false;
   _cached_size_ = 0;
   slot_ = 0;
-  allocation_type_ = 0;
   tensor_description_ = NULL;
 }
 
@@ -713,21 +696,9 @@ NodeOutput* NodeOutput::New(::google::protobuf::Arena* arena) const {
 }
 
 void NodeOutput::Clear() {
-#define ZR_HELPER_(f) reinterpret_cast<char*>(\
-  &reinterpret_cast<NodeOutput*>(16)->f)
-
-#define ZR_(first, last) do {\
-  ::memset(&first, 0,\
-           ZR_HELPER_(last) - ZR_HELPER_(first) + sizeof(last));\
-} while (0)
-
-  ZR_(slot_, allocation_type_);
+  slot_ = 0;
   if (GetArenaNoVirtual() == NULL && tensor_description_ != NULL) delete tensor_description_;
   tensor_description_ = NULL;
-
-#undef ZR_HELPER_
-#undef ZR_
-
 }
 
 bool NodeOutput::MergePartialFromCodedStream(
@@ -747,22 +718,6 @@ bool NodeOutput::MergePartialFromCodedStream(
                    ::google::protobuf::int32, ::google::protobuf::internal::WireFormatLite::TYPE_INT32>(
                  input, &slot_)));
 
-        } else {
-          goto handle_unusual;
-        }
-        if (input->ExpectTag(16)) goto parse_allocation_type;
-        break;
-      }
-
-      // optional .tensorflow.AllocationType allocation_type = 2;
-      case 2: {
-        if (tag == 16) {
-         parse_allocation_type:
-          int value;
-          DO_((::google::protobuf::internal::WireFormatLite::ReadPrimitive<
-                   int, ::google::protobuf::internal::WireFormatLite::TYPE_ENUM>(
-                 input, &value)));
-          set_allocation_type(static_cast< ::tensorflow::AllocationType >(value));
         } else {
           goto handle_unusual;
         }
@@ -812,12 +767,6 @@ void NodeOutput::SerializeWithCachedSizes(
     ::google::protobuf::internal::WireFormatLite::WriteInt32(1, this->slot(), output);
   }
 
-  // optional .tensorflow.AllocationType allocation_type = 2;
-  if (this->allocation_type() != 0) {
-    ::google::protobuf::internal::WireFormatLite::WriteEnum(
-      2, this->allocation_type(), output);
-  }
-
   // optional .tensorflow.TensorDescription tensor_description = 3;
   if (this->has_tensor_description()) {
     ::google::protobuf::internal::WireFormatLite::WriteMessageMaybeToArray(
@@ -833,12 +782,6 @@ void NodeOutput::SerializeWithCachedSizes(
   // optional int32 slot = 1;
   if (this->slot() != 0) {
     target = ::google::protobuf::internal::WireFormatLite::WriteInt32ToArray(1, this->slot(), target);
-  }
-
-  // optional .tensorflow.AllocationType allocation_type = 2;
-  if (this->allocation_type() != 0) {
-    target = ::google::protobuf::internal::WireFormatLite::WriteEnumToArray(
-      2, this->allocation_type(), target);
   }
 
   // optional .tensorflow.TensorDescription tensor_description = 3;
@@ -860,12 +803,6 @@ int NodeOutput::ByteSize() const {
     total_size += 1 +
       ::google::protobuf::internal::WireFormatLite::Int32Size(
         this->slot());
-  }
-
-  // optional .tensorflow.AllocationType allocation_type = 2;
-  if (this->allocation_type() != 0) {
-    total_size += 1 +
-      ::google::protobuf::internal::WireFormatLite::EnumSize(this->allocation_type());
   }
 
   // optional .tensorflow.TensorDescription tensor_description = 3;
@@ -898,9 +835,6 @@ void NodeOutput::MergeFrom(const NodeOutput& from) {
   if (from.slot() != 0) {
     set_slot(from.slot());
   }
-  if (from.allocation_type() != 0) {
-    set_allocation_type(from.allocation_type());
-  }
   if (from.has_tensor_description()) {
     mutable_tensor_description()->::tensorflow::TensorDescription::MergeFrom(from.tensor_description());
   }
@@ -929,7 +863,6 @@ void NodeOutput::Swap(NodeOutput* other) {
 }
 void NodeOutput::InternalSwap(NodeOutput* other) {
   std::swap(slot_, other->slot_);
-  std::swap(allocation_type_, other->allocation_type_);
   std::swap(tensor_description_, other->tensor_description_);
   _internal_metadata_.Swap(&other->_internal_metadata_);
   std::swap(_cached_size_, other->_cached_size_);
@@ -958,20 +891,6 @@ void NodeOutput::clear_slot() {
   
   slot_ = value;
   // @@protoc_insertion_point(field_set:tensorflow.NodeOutput.slot)
-}
-
-// optional .tensorflow.AllocationType allocation_type = 2;
-void NodeOutput::clear_allocation_type() {
-  allocation_type_ = 0;
-}
- ::tensorflow::AllocationType NodeOutput::allocation_type() const {
-  // @@protoc_insertion_point(field_get:tensorflow.NodeOutput.allocation_type)
-  return static_cast< ::tensorflow::AllocationType >(allocation_type_);
-}
- void NodeOutput::set_allocation_type(::tensorflow::AllocationType value) {
-  
-  allocation_type_ = value;
-  // @@protoc_insertion_point(field_set:tensorflow.NodeOutput.allocation_type)
 }
 
 // optional .tensorflow.TensorDescription tensor_description = 3;
@@ -1026,6 +945,7 @@ const int NodeExecStats::kOutputFieldNumber;
 const int NodeExecStats::kTimelineLabelFieldNumber;
 const int NodeExecStats::kScheduledMicrosFieldNumber;
 const int NodeExecStats::kThreadIdFieldNumber;
+const int NodeExecStats::kReferencedTensorFieldNumber;
 #endif  // !defined(_MSC_VER) || _MSC_VER >= 1900
 
 NodeExecStats::NodeExecStats()
@@ -1109,13 +1029,15 @@ void NodeExecStats::Clear() {
   ZR_(all_start_micros_, all_end_rel_micros_);
   node_name_.ClearToEmptyNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited());
   timeline_label_.ClearToEmptyNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited());
-  ZR_(scheduled_micros_, thread_id_);
+  scheduled_micros_ = GOOGLE_LONGLONG(0);
+  thread_id_ = 0u;
 
 #undef ZR_HELPER_
 #undef ZR_
 
   memory_.Clear();
   output_.Clear();
+  referenced_tensor_.Clear();
 }
 
 bool NodeExecStats::MergePartialFromCodedStream(
@@ -1280,6 +1202,23 @@ bool NodeExecStats::MergePartialFromCodedStream(
         } else {
           goto handle_unusual;
         }
+        if (input->ExpectTag(90)) goto parse_referenced_tensor;
+        break;
+      }
+
+      // repeated .tensorflow.AllocationDescription referenced_tensor = 11;
+      case 11: {
+        if (tag == 90) {
+         parse_referenced_tensor:
+          DO_(input->IncrementRecursionDepth());
+         parse_loop_referenced_tensor:
+          DO_(::google::protobuf::internal::WireFormatLite::ReadMessageNoVirtualNoRecursionDepth(
+                input, add_referenced_tensor()));
+        } else {
+          goto handle_unusual;
+        }
+        if (input->ExpectTag(90)) goto parse_loop_referenced_tensor;
+        input->UnsafeDecrementRecursionDepth();
         if (input->ExpectAtEnd()) goto success;
         break;
       }
@@ -1370,6 +1309,12 @@ void NodeExecStats::SerializeWithCachedSizes(
     ::google::protobuf::internal::WireFormatLite::WriteUInt32(10, this->thread_id(), output);
   }
 
+  // repeated .tensorflow.AllocationDescription referenced_tensor = 11;
+  for (unsigned int i = 0, n = this->referenced_tensor_size(); i < n; i++) {
+    ::google::protobuf::internal::WireFormatLite::WriteMessageMaybeToArray(
+      11, this->referenced_tensor(i), output);
+  }
+
   // @@protoc_insertion_point(serialize_end:tensorflow.NodeExecStats)
 }
 
@@ -1440,6 +1385,13 @@ void NodeExecStats::SerializeWithCachedSizes(
   // optional uint32 thread_id = 10;
   if (this->thread_id() != 0) {
     target = ::google::protobuf::internal::WireFormatLite::WriteUInt32ToArray(10, this->thread_id(), target);
+  }
+
+  // repeated .tensorflow.AllocationDescription referenced_tensor = 11;
+  for (unsigned int i = 0, n = this->referenced_tensor_size(); i < n; i++) {
+    target = ::google::protobuf::internal::WireFormatLite::
+      WriteMessageNoVirtualToArray(
+        11, this->referenced_tensor(i), target);
   }
 
   // @@protoc_insertion_point(serialize_to_array_end:tensorflow.NodeExecStats)
@@ -1521,6 +1473,14 @@ int NodeExecStats::ByteSize() const {
         this->output(i));
   }
 
+  // repeated .tensorflow.AllocationDescription referenced_tensor = 11;
+  total_size += 1 * this->referenced_tensor_size();
+  for (int i = 0; i < this->referenced_tensor_size(); i++) {
+    total_size +=
+      ::google::protobuf::internal::WireFormatLite::MessageSizeNoVirtual(
+        this->referenced_tensor(i));
+  }
+
   GOOGLE_SAFE_CONCURRENT_WRITES_BEGIN();
   _cached_size_ = total_size;
   GOOGLE_SAFE_CONCURRENT_WRITES_END();
@@ -1543,6 +1503,7 @@ void NodeExecStats::MergeFrom(const NodeExecStats& from) {
   if (GOOGLE_PREDICT_FALSE(&from == this)) MergeFromFail(__LINE__);
   memory_.MergeFrom(from.memory_);
   output_.MergeFrom(from.output_);
+  referenced_tensor_.MergeFrom(from.referenced_tensor_);
   if (from.node_name().size() > 0) {
 
     node_name_.AssignWithDefault(&::google::protobuf::internal::GetEmptyStringAlreadyInited(), from.node_name_);
@@ -1603,6 +1564,7 @@ void NodeExecStats::InternalSwap(NodeExecStats* other) {
   timeline_label_.Swap(&other->timeline_label_);
   std::swap(scheduled_micros_, other->scheduled_micros_);
   std::swap(thread_id_, other->thread_id_);
+  referenced_tensor_.UnsafeArenaSwap(&other->referenced_tensor_);
   _internal_metadata_.Swap(&other->_internal_metadata_);
   std::swap(_cached_size_, other->_cached_size_);
 }
@@ -1846,6 +1808,36 @@ void NodeExecStats::clear_thread_id() {
   
   thread_id_ = value;
   // @@protoc_insertion_point(field_set:tensorflow.NodeExecStats.thread_id)
+}
+
+// repeated .tensorflow.AllocationDescription referenced_tensor = 11;
+int NodeExecStats::referenced_tensor_size() const {
+  return referenced_tensor_.size();
+}
+void NodeExecStats::clear_referenced_tensor() {
+  referenced_tensor_.Clear();
+}
+const ::tensorflow::AllocationDescription& NodeExecStats::referenced_tensor(int index) const {
+  // @@protoc_insertion_point(field_get:tensorflow.NodeExecStats.referenced_tensor)
+  return referenced_tensor_.Get(index);
+}
+::tensorflow::AllocationDescription* NodeExecStats::mutable_referenced_tensor(int index) {
+  // @@protoc_insertion_point(field_mutable:tensorflow.NodeExecStats.referenced_tensor)
+  return referenced_tensor_.Mutable(index);
+}
+::tensorflow::AllocationDescription* NodeExecStats::add_referenced_tensor() {
+  // @@protoc_insertion_point(field_add:tensorflow.NodeExecStats.referenced_tensor)
+  return referenced_tensor_.Add();
+}
+::google::protobuf::RepeatedPtrField< ::tensorflow::AllocationDescription >*
+NodeExecStats::mutable_referenced_tensor() {
+  // @@protoc_insertion_point(field_mutable_list:tensorflow.NodeExecStats.referenced_tensor)
+  return &referenced_tensor_;
+}
+const ::google::protobuf::RepeatedPtrField< ::tensorflow::AllocationDescription >&
+NodeExecStats::referenced_tensor() const {
+  // @@protoc_insertion_point(field_list:tensorflow.NodeExecStats.referenced_tensor)
+  return referenced_tensor_;
 }
 
 #endif  // PROTOBUF_INLINE_NOT_IN_HEADERS

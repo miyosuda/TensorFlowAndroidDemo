@@ -7,6 +7,7 @@
 #include <algorithm>
 
 #include <google/protobuf/stubs/common.h>
+#include <google/protobuf/stubs/port.h>
 #include <google/protobuf/stubs/once.h>
 #include <google/protobuf/io/coded_stream.h>
 #include <google/protobuf/wire_format_lite_inl.h>
@@ -92,7 +93,8 @@ void protobuf_AddDesc_tensorflow_2fcore_2fframework_2ftensor_5fdescription_2epro
     "(\0162\024.tensorflow.DataType\022+\n\005shape\030\002 \001(\0132"
     "\034.tensorflow.TensorShapeProto\022A\n\026allocat"
     "ion_description\030\004 \001(\0132!.tensorflow.Alloc"
-    "ationDescriptionb\006proto3", 384);
+    "ationDescriptionB5\n\030org.tensorflow.frame"
+    "workB\027TensorDescriptionProtosP\001b\006proto3", 439);
   ::google::protobuf::MessageFactory::InternalRegisterGeneratedFile(
     "tensorflow/core/framework/tensor_description.proto", &protobuf_RegisterTypes);
   TensorDescription::default_instance_ = new TensorDescription();

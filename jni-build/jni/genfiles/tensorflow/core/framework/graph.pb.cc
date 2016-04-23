@@ -7,6 +7,7 @@
 #include <algorithm>
 
 #include <google/protobuf/stubs/common.h>
+#include <google/protobuf/stubs/port.h>
 #include <google/protobuf/stubs/once.h>
 #include <google/protobuf/io/coded_stream.h>
 #include <google/protobuf/wire_format_lite_inl.h>
@@ -38,8 +39,9 @@ void protobuf_AssignDesc_tensorflow_2fcore_2fframework_2fgraph_2eproto() {
       "tensorflow/core/framework/graph.proto");
   GOOGLE_CHECK(file != NULL);
   GraphDef_descriptor_ = file->message_type(0);
-  static const int GraphDef_offsets_[3] = {
+  static const int GraphDef_offsets_[4] = {
     GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(GraphDef, node_),
+    GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(GraphDef, versions_),
     GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(GraphDef, version_),
     GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(GraphDef, library_),
   };
@@ -118,18 +120,23 @@ void protobuf_AddDesc_tensorflow_2fcore_2fframework_2fgraph_2eproto() {
 
   ::tensorflow::protobuf_AddDesc_tensorflow_2fcore_2fframework_2fattr_5fvalue_2eproto();
   ::tensorflow::protobuf_AddDesc_tensorflow_2fcore_2fframework_2ffunction_2eproto();
+  ::tensorflow::protobuf_AddDesc_tensorflow_2fcore_2fframework_2fversions_2eproto();
   ::google::protobuf::DescriptorPool::InternalAddGeneratedFile(
     "\n%tensorflow/core/framework/graph.proto\022"
     "\ntensorflow\032*tensorflow/core/framework/a"
     "ttr_value.proto\032(tensorflow/core/framewo"
-    "rk/function.proto\"o\n\010GraphDef\022!\n\004node\030\001 "
-    "\003(\0132\023.tensorflow.NodeDef\022\017\n\007version\030\003 \001("
-    "\005\022/\n\007library\030\002 \001(\0132\036.tensorflow.Function"
-    "DefLibrary\"\263\001\n\007NodeDef\022\014\n\004name\030\001 \001(\t\022\n\n\002"
-    "op\030\002 \001(\t\022\r\n\005input\030\003 \003(\t\022\016\n\006device\030\004 \001(\t\022"
-    "+\n\004attr\030\005 \003(\0132\035.tensorflow.NodeDef.AttrE"
-    "ntry\032B\n\tAttrEntry\022\013\n\003key\030\001 \001(\t\022$\n\005value\030"
-    "\002 \001(\0132\025.tensorflow.AttrValue:\0028\001b\006proto3", 440);
+    "rk/function.proto\032(tensorflow/core/frame"
+    "work/versions.proto\"\235\001\n\010GraphDef\022!\n\004node"
+    "\030\001 \003(\0132\023.tensorflow.NodeDef\022(\n\010versions\030"
+    "\004 \001(\0132\026.tensorflow.VersionDef\022\023\n\007version"
+    "\030\003 \001(\005B\002\030\001\022/\n\007library\030\002 \001(\0132\036.tensorflow"
+    ".FunctionDefLibrary\"\263\001\n\007NodeDef\022\014\n\004name\030"
+    "\001 \001(\t\022\n\n\002op\030\002 \001(\t\022\r\n\005input\030\003 \003(\t\022\016\n\006devi"
+    "ce\030\004 \001(\t\022+\n\004attr\030\005 \003(\0132\035.tensorflow.Node"
+    "Def.AttrEntry\032B\n\tAttrEntry\022\013\n\003key\030\001 \001(\t\022"
+    "$\n\005value\030\002 \001(\0132\025.tensorflow.AttrValue:\0028"
+    "\001B)\n\030org.tensorflow.frameworkB\013GraphProt"
+    "osP\001b\006proto3", 572);
   ::google::protobuf::MessageFactory::InternalRegisterGeneratedFile(
     "tensorflow/core/framework/graph.proto", &protobuf_RegisterTypes);
   GraphDef::default_instance_ = new GraphDef();
@@ -160,6 +167,7 @@ static void MergeFromFail(int line) {
 
 #if !defined(_MSC_VER) || _MSC_VER >= 1900
 const int GraphDef::kNodeFieldNumber;
+const int GraphDef::kVersionsFieldNumber;
 const int GraphDef::kVersionFieldNumber;
 const int GraphDef::kLibraryFieldNumber;
 #endif  // !defined(_MSC_VER) || _MSC_VER >= 1900
@@ -172,6 +180,7 @@ GraphDef::GraphDef()
 
 void GraphDef::InitAsDefaultInstance() {
   _is_default_instance_ = true;
+  versions_ = const_cast< ::tensorflow::VersionDef*>(&::tensorflow::VersionDef::default_instance());
   library_ = const_cast< ::tensorflow::FunctionDefLibrary*>(&::tensorflow::FunctionDefLibrary::default_instance());
 }
 
@@ -186,6 +195,7 @@ GraphDef::GraphDef(const GraphDef& from)
 void GraphDef::SharedCtor() {
     _is_default_instance_ = false;
   _cached_size_ = 0;
+  versions_ = NULL;
   version_ = 0;
   library_ = NULL;
 }
@@ -197,6 +207,7 @@ GraphDef::~GraphDef() {
 
 void GraphDef::SharedDtor() {
   if (this != default_instance_) {
+    delete versions_;
     delete library_;
   }
 }
@@ -227,6 +238,8 @@ GraphDef* GraphDef::New(::google::protobuf::Arena* arena) const {
 }
 
 void GraphDef::Clear() {
+  if (GetArenaNoVirtual() == NULL && versions_ != NULL) delete versions_;
+  versions_ = NULL;
   version_ = 0;
   if (GetArenaNoVirtual() == NULL && library_ != NULL) delete library_;
   library_ = NULL;
@@ -272,7 +285,7 @@ bool GraphDef::MergePartialFromCodedStream(
         break;
       }
 
-      // optional int32 version = 3;
+      // optional int32 version = 3 [deprecated = true];
       case 3: {
         if (tag == 24) {
          parse_version:
@@ -280,6 +293,19 @@ bool GraphDef::MergePartialFromCodedStream(
                    ::google::protobuf::int32, ::google::protobuf::internal::WireFormatLite::TYPE_INT32>(
                  input, &version_)));
 
+        } else {
+          goto handle_unusual;
+        }
+        if (input->ExpectTag(34)) goto parse_versions;
+        break;
+      }
+
+      // optional .tensorflow.VersionDef versions = 4;
+      case 4: {
+        if (tag == 34) {
+         parse_versions:
+          DO_(::google::protobuf::internal::WireFormatLite::ReadMessageNoVirtual(
+               input, mutable_versions()));
         } else {
           goto handle_unusual;
         }
@@ -323,9 +349,15 @@ void GraphDef::SerializeWithCachedSizes(
       2, *this->library_, output);
   }
 
-  // optional int32 version = 3;
+  // optional int32 version = 3 [deprecated = true];
   if (this->version() != 0) {
     ::google::protobuf::internal::WireFormatLite::WriteInt32(3, this->version(), output);
+  }
+
+  // optional .tensorflow.VersionDef versions = 4;
+  if (this->has_versions()) {
+    ::google::protobuf::internal::WireFormatLite::WriteMessageMaybeToArray(
+      4, *this->versions_, output);
   }
 
   // @@protoc_insertion_point(serialize_end:tensorflow.GraphDef)
@@ -348,9 +380,16 @@ void GraphDef::SerializeWithCachedSizes(
         2, *this->library_, target);
   }
 
-  // optional int32 version = 3;
+  // optional int32 version = 3 [deprecated = true];
   if (this->version() != 0) {
     target = ::google::protobuf::internal::WireFormatLite::WriteInt32ToArray(3, this->version(), target);
+  }
+
+  // optional .tensorflow.VersionDef versions = 4;
+  if (this->has_versions()) {
+    target = ::google::protobuf::internal::WireFormatLite::
+      WriteMessageNoVirtualToArray(
+        4, *this->versions_, target);
   }
 
   // @@protoc_insertion_point(serialize_to_array_end:tensorflow.GraphDef)
@@ -360,7 +399,14 @@ void GraphDef::SerializeWithCachedSizes(
 int GraphDef::ByteSize() const {
   int total_size = 0;
 
-  // optional int32 version = 3;
+  // optional .tensorflow.VersionDef versions = 4;
+  if (this->has_versions()) {
+    total_size += 1 +
+      ::google::protobuf::internal::WireFormatLite::MessageSizeNoVirtual(
+        *this->versions_);
+  }
+
+  // optional int32 version = 3 [deprecated = true];
   if (this->version() != 0) {
     total_size += 1 +
       ::google::protobuf::internal::WireFormatLite::Int32Size(
@@ -403,6 +449,9 @@ void GraphDef::MergeFrom(const ::google::protobuf::Message& from) {
 void GraphDef::MergeFrom(const GraphDef& from) {
   if (GOOGLE_PREDICT_FALSE(&from == this)) MergeFromFail(__LINE__);
   node_.MergeFrom(from.node_);
+  if (from.has_versions()) {
+    mutable_versions()->::tensorflow::VersionDef::MergeFrom(from.versions());
+  }
   if (from.version() != 0) {
     set_version(from.version());
   }
@@ -434,6 +483,7 @@ void GraphDef::Swap(GraphDef* other) {
 }
 void GraphDef::InternalSwap(GraphDef* other) {
   node_.UnsafeArenaSwap(&other->node_);
+  std::swap(versions_, other->versions_);
   std::swap(version_, other->version_);
   std::swap(library_, other->library_);
   _internal_metadata_.Swap(&other->_internal_metadata_);
@@ -481,7 +531,44 @@ GraphDef::node() const {
   return node_;
 }
 
-// optional int32 version = 3;
+// optional .tensorflow.VersionDef versions = 4;
+bool GraphDef::has_versions() const {
+  return !_is_default_instance_ && versions_ != NULL;
+}
+void GraphDef::clear_versions() {
+  if (GetArenaNoVirtual() == NULL && versions_ != NULL) delete versions_;
+  versions_ = NULL;
+}
+const ::tensorflow::VersionDef& GraphDef::versions() const {
+  // @@protoc_insertion_point(field_get:tensorflow.GraphDef.versions)
+  return versions_ != NULL ? *versions_ : *default_instance_->versions_;
+}
+::tensorflow::VersionDef* GraphDef::mutable_versions() {
+  
+  if (versions_ == NULL) {
+    versions_ = new ::tensorflow::VersionDef;
+  }
+  // @@protoc_insertion_point(field_mutable:tensorflow.GraphDef.versions)
+  return versions_;
+}
+::tensorflow::VersionDef* GraphDef::release_versions() {
+  
+  ::tensorflow::VersionDef* temp = versions_;
+  versions_ = NULL;
+  return temp;
+}
+void GraphDef::set_allocated_versions(::tensorflow::VersionDef* versions) {
+  delete versions_;
+  versions_ = versions;
+  if (versions) {
+    
+  } else {
+    
+  }
+  // @@protoc_insertion_point(field_set_allocated:tensorflow.GraphDef.versions)
+}
+
+// optional int32 version = 3 [deprecated = true];
 void GraphDef::clear_version() {
   version_ = 0;
 }

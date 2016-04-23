@@ -13,22 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-/// <reference path="../../../typings/tsd.d.ts" />
-
 declare module graphlib {
 
   interface GraphOptions {
-    name: string;
+    name?: string;
     /**
      * Direction for rank nodes. Can be TB, BT, LR, or RL, where T = top,
      * B = bottom, L = left, and R = right.
      */
-    rankdir: string;
-    type: string|number;
+    rankdir?: string;
+    type?: string|number;
     /** Number of pixels between each rank in the layout. */
     ranksep?: number;
     /** Number of pixels that separate nodes horizontally in the layout. */
     nodesep?: number;
+    /** Number of pixels that separate edges horizontally in the layout */
+    edgesep?: number;
   }
 
   export interface EdgeObject {
@@ -58,7 +58,10 @@ declare module graphlib {
         edges(): EdgeObject[];
         outEdges(name: string): E[];
         inEdges(name: string): E[];
-        /** Returns those nodes in the graph that have no in-edges. Takes O(|V|) time. */
+        /**
+         * Returns those nodes in the graph that have no in-edges.
+         * Takes O(|V|) time.
+         */
         sources(): string[];
         /**
          * Remove the node with the id v in the graph or do nothing if
@@ -95,7 +98,41 @@ export function time<T>(msg: string, task: () => T) {
 export interface ProgressTracker {
   updateProgress(incrementValue: number): void;
   setMessage(msg: string): void;
-  reportError(msg: string): void;
+  reportError(msg: string, err: Error): void;
+}
+
+/**
+ * Creates a tracker that sets the progress property of the
+ * provided polymer component. The provided component must have
+ * a property called 'progress' that is not read-only. The progress
+ * property is an object with a numerical 'value' property and a
+ * string 'msg' property.
+ */
+export function getTracker(polymerComponent: any) {
+  return {
+    setMessage: function(msg) {
+      polymerComponent.set("progress", {
+        value: polymerComponent.progress.value,
+        msg: msg
+      });
+    },
+    updateProgress: function(value) {
+      polymerComponent.set("progress", {
+        value: polymerComponent.progress.value + value,
+        msg: polymerComponent.progress.msg
+      });
+    },
+    reportError: function(msg: string, err) {
+      // Log the stack trace in the console.
+      console.error(err.stack);
+      // And send a user-friendly message to the UI.
+      polymerComponent.set("progress", {
+        value: polymerComponent.progress.value,
+        msg: msg,
+        error: true
+      });
+    },
+  };
 }
 
 /**
@@ -110,7 +147,7 @@ export function getSubtaskTracker(parentTracker: ProgressTracker,
     setMessage: function(progressMsg) {
       // The parent should show a concatenation of its message along with
       // its subtask tracker message.
-      parentTracker.setMessage(subtaskMsg + " : " + progressMsg);
+      parentTracker.setMessage(subtaskMsg + ": " + progressMsg);
     },
     updateProgress: function(incrementValue) {
       // Update the parent progress relative to the child progress.
@@ -119,12 +156,34 @@ export function getSubtaskTracker(parentTracker: ProgressTracker,
       parentTracker
           .updateProgress(incrementValue * impactOnTotalProgress / 100);
     },
-    reportError: function(errorMsg) {
+    reportError: function(msg: string, err: Error) {
       // The parent should show a concatenation of its message along with
       // its subtask error message.
-      parentTracker.reportError(subtaskMsg + " : " + errorMsg);
+      parentTracker.reportError(subtaskMsg + ": " + msg, err);
     }
   };
+}
+
+/**
+ * Runs an expensive task and return the result.
+ */
+export function runTask<T>(msg: string, incProgressValue: number,
+    task: () => T, tracker: ProgressTracker): T {
+  // Update the progress message to say the current running task.
+  tracker.setMessage(msg);
+  // Run the expensive task with a delay that gives enough time for the
+  // UI to update.
+  try {
+    var result = tf.time(msg, task);
+    // Update the progress value.
+    tracker.updateProgress(incProgressValue);
+    // Return the result to be used by other tasks.
+    return result;
+  } catch (e) {
+    // Errors that happen inside asynchronous tasks are
+    // reported to the tracker using a user-friendly message.
+    tracker.reportError("Failed " + msg, e);
+  }
 }
 
 /**
@@ -145,7 +204,9 @@ export function runAsyncTask<T>(msg: string, incProgressValue: number,
         // Return the result to be used by other tasks.
         resolve(result);
       } catch (e) {
-        reject(result);
+        // Errors that happen inside asynchronous tasks are
+        // reported to the tracker using a user-friendly message.
+        tracker.reportError("Failed " + msg, e);
       }
     }, ASYNC_TASK_DELAY);
   });
@@ -160,7 +221,7 @@ export function escapeQuerySelector(querySelector: string): string {
 }
 
 /**
- * TensorFlow node definition as definied in the graph proto file.
+ * TensorFlow node definition as defined in the graph proto file.
  */
 export interface TFNode {
   /** Name of the node */
@@ -178,31 +239,31 @@ export interface TFNode {
 /**
  * TensorFlow stats file definition as defined in the stats proto file.
  */
-export interface TFStats {
-  devStats: {device: string, nodeStats: TFNodeStats[]}[];
+export interface StepStats {
+  dev_stats: {device: string, node_stats: NodeStats[]}[];
 }
 
 /**
  * TensorFlow stats for a node as defined in the stats proto file.
  */
-export interface TFNodeStats {
-  nodeName: string;
+export interface NodeStats {
+  node_name: string;
   // The next 4 properties are currently stored as string in json
   // and must be parsed.
-  allStartMicros: number;
-  opStartRelMicros: number;
-  opEndRelMicros: number;
-  allEndRelMicros: number;
+  all_start_micros: number;
+  op_start_rel_micros: number;
+  op_end_rel_micros: number;
+  all_end_rel_micros: number;
   memory: {
-    allocatorName: string;
-    totalBytes: number; // Stored as string in json and should be parsed.
-    peakBytes: number; // Stored as string in json and should be parsed.
+    allocator_name: string;
+    total_bytes: number; // Stored as string in json and should be parsed.
+    peak_bytes: number; // Stored as string in json and should be parsed.
   }[];
   /** Output sizes recorded for a single execution of a graph node */
   output: TFNodeOutput[];
-  timelineLabel: string;
-  scheduledMicros: string;
-  threadId: string;
+  timeline_label: string;
+  scheduled_micros: string;
+  thread_id: string;
 }
 
 /**
@@ -210,9 +271,7 @@ export interface TFNodeStats {
  */
 export interface TFNodeOutput {
   slot: number; // Stored as string in json and should be parsed.
-  /** Was the tensor allocated by this Op or a previous computation */
-  allocationType: string;
-  tensorDescription: {
+  tensor_description: {
     /** Data type of tensor elements */
     dtype: string;
     /** Shape of the tensor */
@@ -231,15 +290,15 @@ export interface TFNodeOutput {
       }[];
     };
     /** Information about the size and allocator used for the data */
-    allocationDescription: {
+    allocation_description: {
       // The next 2 properties are stored as string in json and
       // should be parsed.
       /** Total number of bytes requested */
-      requestedBytes: number;
+      requested_bytes: number;
       /** Total number of bytes allocated, if known */
-      allocatedBytes?: number;
+      allocated_bytes?: number;
       /** Name of the allocator used */
-      allocatorName: string;
+      allocator_name: string;
     };
   };
 }

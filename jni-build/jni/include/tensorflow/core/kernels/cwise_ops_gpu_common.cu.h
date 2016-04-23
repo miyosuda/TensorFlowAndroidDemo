@@ -26,7 +26,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/cwise_ops.h"
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/types.h"
 
 #include "tensorflow/core/platform/logging.h"
 namespace tensorflow {
@@ -102,17 +102,6 @@ struct BinaryFunctor<GPUDevice, Functor, NDIMS> {
   }
 };
 
-template <typename T>
-struct SelectFunctor<GPUDevice, T> {
-  void operator()(const GPUDevice& d, typename TTypes<T>::Flat out,
-                  typename TTypes<bool>::ConstFlat cond_flat,
-                  typename TTypes<T>::ConstFlat then_flat,
-                  typename TTypes<T>::ConstFlat else_flat) {
-    To32Bit(out).device(d) =
-        To32Bit(cond_flat).select(To32Bit(then_flat), To32Bit(else_flat));
-  }
-};
-
 // Macros to explicitly instantiate kernels on GPU for multiple types
 // (T0, T1, etc.) for UnaryFunctor (e.g., functor:sqrt).
 #define DEFINE_UNARY1(F, T) template struct UnaryFunctor<GPUDevice, F<T> >
@@ -153,6 +142,9 @@ struct SelectFunctor<GPUDevice, T> {
 #define DEFINE_BINARY7(F, T0, T1, T2, T3, T4, T5, T6) \
   DEFINE_BINARY3(F, T0, T1, T2);                      \
   DEFINE_BINARY4(F, T3, T4, T5, T6)
+#define DEFINE_BINARY8(F, T0, T1, T2, T3, T4, T5, T6, T7) \
+  DEFINE_BINARY4(F, T0, T1, T2, T3);                      \
+  DEFINE_BINARY4(F, T4, T5, T6, T7)
 
 }  // end namespace functor
 }  // end namespace tensorflow

@@ -15,17 +15,34 @@ limitations under the License.
 
 #include "tensorflow/core/graph/node_builder.h"
 
+#include <vector>
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
 
-NodeBuilder::NodeBuilder(const string& name, const string& op_name,
+NodeBuilder::NodeOut::NodeOut(Node* n, int i)  // NOLINT(runtime/explicit)
+    : node(n),
+      error(false),
+      name(node != nullptr ? node->name() : (error = true, "")),
+      index(i),
+      dt(SafeGetOutput(node, i, &error)) {}
+
+NodeBuilder::NodeOut::NodeOut(StringPiece n, int i, DataType t)
+    : node(nullptr), error(false), name(n.ToString()), index(i), dt(t) {}
+
+NodeBuilder::NodeOut::NodeOut()
+    : node(nullptr), error(true), index(0), dt(DT_FLOAT) {}
+
+NodeBuilder::NodeBuilder(StringPiece name, StringPiece op_name,
                          const OpRegistryInterface* op_registry)
     : def_builder_(name, op_name, op_registry) {}
 
-NodeBuilder::NodeBuilder(const string& name, const OpDef* op_def)
+NodeBuilder::NodeBuilder(StringPiece name, const OpDef* op_def)
     : def_builder_(name, op_def) {}
+
+NodeBuilder::NodeBuilder(const NodeDefBuilder& def_builder)
+    : def_builder_(def_builder) {}
 
 NodeBuilder& NodeBuilder::Input(Node* src_node, int src_index) {
   inputs_.emplace_back(src_node, src_index);
@@ -76,7 +93,7 @@ NodeBuilder& NodeBuilder::ControlInputs(gtl::ArraySlice<Node*> src_nodes) {
   return *this;
 }
 
-NodeBuilder& NodeBuilder::Device(const string& device_spec) {
+NodeBuilder& NodeBuilder::Device(StringPiece device_spec) {
   def_builder_.Device(device_spec);
   return *this;
 }

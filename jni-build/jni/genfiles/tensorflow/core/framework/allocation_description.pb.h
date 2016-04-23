@@ -119,6 +119,24 @@ class AllocationDescription : public ::google::protobuf::Message {
   ::std::string* release_allocator_name();
   void set_allocated_allocator_name(::std::string* allocator_name);
 
+  // optional int64 allocation_id = 4;
+  void clear_allocation_id();
+  static const int kAllocationIdFieldNumber = 4;
+  ::google::protobuf::int64 allocation_id() const;
+  void set_allocation_id(::google::protobuf::int64 value);
+
+  // optional bool has_single_reference = 5;
+  void clear_has_single_reference();
+  static const int kHasSingleReferenceFieldNumber = 5;
+  bool has_single_reference() const;
+  void set_has_single_reference(bool value);
+
+  // optional uint64 ptr = 6;
+  void clear_ptr();
+  static const int kPtrFieldNumber = 6;
+  ::google::protobuf::uint64 ptr() const;
+  void set_ptr(::google::protobuf::uint64 value);
+
   // @@protoc_insertion_point(class_scope:tensorflow.AllocationDescription)
  private:
 
@@ -127,6 +145,9 @@ class AllocationDescription : public ::google::protobuf::Message {
   ::google::protobuf::int64 requested_bytes_;
   ::google::protobuf::int64 allocated_bytes_;
   ::google::protobuf::internal::ArenaStringPtr allocator_name_;
+  ::google::protobuf::int64 allocation_id_;
+  ::google::protobuf::uint64 ptr_;
+  bool has_single_reference_;
   mutable int _cached_size_;
   friend void  protobuf_AddDesc_tensorflow_2fcore_2fframework_2fallocation_5fdescription_2eproto();
   friend void protobuf_AssignDesc_tensorflow_2fcore_2fframework_2fallocation_5fdescription_2eproto();
@@ -212,6 +233,48 @@ inline void AllocationDescription::set_allocated_allocator_name(::std::string* a
   }
   allocator_name_.SetAllocatedNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited(), allocator_name);
   // @@protoc_insertion_point(field_set_allocated:tensorflow.AllocationDescription.allocator_name)
+}
+
+// optional int64 allocation_id = 4;
+inline void AllocationDescription::clear_allocation_id() {
+  allocation_id_ = GOOGLE_LONGLONG(0);
+}
+inline ::google::protobuf::int64 AllocationDescription::allocation_id() const {
+  // @@protoc_insertion_point(field_get:tensorflow.AllocationDescription.allocation_id)
+  return allocation_id_;
+}
+inline void AllocationDescription::set_allocation_id(::google::protobuf::int64 value) {
+  
+  allocation_id_ = value;
+  // @@protoc_insertion_point(field_set:tensorflow.AllocationDescription.allocation_id)
+}
+
+// optional bool has_single_reference = 5;
+inline void AllocationDescription::clear_has_single_reference() {
+  has_single_reference_ = false;
+}
+inline bool AllocationDescription::has_single_reference() const {
+  // @@protoc_insertion_point(field_get:tensorflow.AllocationDescription.has_single_reference)
+  return has_single_reference_;
+}
+inline void AllocationDescription::set_has_single_reference(bool value) {
+  
+  has_single_reference_ = value;
+  // @@protoc_insertion_point(field_set:tensorflow.AllocationDescription.has_single_reference)
+}
+
+// optional uint64 ptr = 6;
+inline void AllocationDescription::clear_ptr() {
+  ptr_ = GOOGLE_ULONGLONG(0);
+}
+inline ::google::protobuf::uint64 AllocationDescription::ptr() const {
+  // @@protoc_insertion_point(field_get:tensorflow.AllocationDescription.ptr)
+  return ptr_;
+}
+inline void AllocationDescription::set_ptr(::google::protobuf::uint64 value) {
+  
+  ptr_ = value;
+  // @@protoc_insertion_point(field_set:tensorflow.AllocationDescription.ptr)
 }
 
 #endif  // !PROTOBUF_INLINE_NOT_IN_HEADERS

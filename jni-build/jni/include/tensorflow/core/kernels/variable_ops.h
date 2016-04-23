@@ -20,7 +20,9 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
@@ -65,7 +67,7 @@ class VariableOp : public OpKernel {
 
     string DebugString() override {
       return strings::StrCat(DataTypeString(tensor_.dtype()), "/",
-                             tensor_.shape().ShortDebugString());
+                             tensor_.shape().DebugString());
     }
 
    private:
@@ -154,6 +156,22 @@ class DestroyTemporaryVariableOp : public OpKernel {
 
  private:
   string var_name_;
+};
+
+class IsVariableInitializedOp : public OpKernel {
+ public:
+  IsVariableInitializedOp(OpKernelConstruction* context) : OpKernel(context) {}
+
+  void Compute(OpKernelContext* context) override {
+    // Get a mutable input tensor of the Ref input.
+    const Tensor& input_tensor = context->mutable_input(0, false);
+    Tensor* output = nullptr;
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(0, TensorShape({}), &output));
+    auto output_tensor = output->tensor<bool, 0>();
+    bool result = input_tensor.IsInitialized();
+    output_tensor() = result;
+  }
 };
 
 }  // namespace tensorflow

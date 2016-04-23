@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-
 import tensorflow as tf
 
 
@@ -28,17 +26,17 @@ class VersionTest(tf.test.TestCase):
   def testVersion(self):
     self.assertEqual(type(tf.__version__), str)
     # This pattern will need to grow as we include alpha, builds, etc.
-    self.assertRegexpMatches(tf.__version__, r'^\d+\.\d+\.\d+$')
+    self.assertRegexpMatches(tf.__version__, r'^\d+\.\d+\.\w+$')
 
   def testGraphDefVersion(self):
     version = tf.GRAPH_DEF_VERSION
-    min = tf.GRAPH_DEF_VERSION_MIN
-    max = tf.GRAPH_DEF_VERSION_MAX
-    for v in version, min, max:
+    min_consumer = tf.GRAPH_DEF_VERSION_MIN_CONSUMER
+    min_producer = tf.GRAPH_DEF_VERSION_MIN_PRODUCER
+    for v in version, min_consumer, min_producer:
       self.assertEqual(type(v), int)
-    self.assertLessEqual(0, min)
-    self.assertLessEqual(min, version)
-    self.assertLessEqual(version, max)
+    self.assertLessEqual(0, min_consumer)
+    self.assertLessEqual(0, min_producer)
+    self.assertLessEqual(min_producer, version)
 
 
 if __name__ == "__main__":

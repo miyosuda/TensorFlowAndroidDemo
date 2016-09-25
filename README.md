@@ -1,6 +1,6 @@
 # TensorFlow Android stand-alone demo
 
-Android demo source files extracted from original TensorFlow source.
+Android demo source files extracted from original TensorFlow source. (TensorFlow r0.10)
 
 To build this demo, you don't need to prepare build environment with Bazel, and it only requires AndroidStudio.
 

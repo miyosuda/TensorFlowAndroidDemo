@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -66,7 +66,7 @@ class RangeSamplerTest : public ::testing::Test {
     sampler_->Update(a);
   }
   void Update2() {
-    // Add the value n n times.
+    // Add the value n times.
     int64 a[10];
     for (int i = 0; i < 10; i++) {
       a[i] = i;

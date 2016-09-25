@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ from __future__ import print_function
 import base64
 import gzip
 import json
+import numbers
 import os
 import shutil
 import threading
@@ -35,6 +36,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 from google.protobuf import text_format
+from tensorflow.python.platform import resource_loader
 from tensorflow.python.summary import event_multiplexer
 from tensorflow.tensorboard.backend import server
 
@@ -62,9 +64,9 @@ class TensorboardServerTest(tf.test.TestCase):
     self._server.shutdown()
     self._server.server_close()
 
-  def _get(self, path):
+  def _get(self, path, headers={}):
     """Perform a GET request for the given path."""
-    self._connection.request('GET', path)
+    self._connection.request('GET', path, None, headers)
     return self._connection.getresponse()
 
   def _getJson(self, path):
@@ -73,18 +75,6 @@ class TensorboardServerTest(tf.test.TestCase):
     response = self._connection.getresponse()
     self.assertEqual(response.status, 200)
     return json.loads(response.read().decode('utf-8'))
-
-  def _decodeResponse(self, response):
-    """Decompresses (if necessary) the response from the server."""
-    encoding = response.getheader('Content-Encoding')
-    content = response.read()
-    if encoding in ('gzip', 'x-gzip', 'deflate'):
-      if encoding == 'deflate':
-        data = BytesIO(zlib.decompress(content))
-      else:
-        data = gzip.GzipFile('', 'rb', 9, BytesIO(content))
-      content = data.read()
-    return content
 
   def testBasicStartup(self):
     """Start the server up and then shut it down immediately."""
@@ -107,14 +97,19 @@ class TensorboardServerTest(tf.test.TestCase):
 
   def testRuns(self):
     """Test the format of the /data/runs endpoint."""
-    self.assertEqual(
-        self._getJson('/data/runs'),
-        {'run1': {'compressedHistograms': ['histogram'],
-                  'scalars': ['simple_values'],
-                  'histograms': ['histogram'],
-                  'images': ['image'],
-                  'graph': True,
-                  'run_metadata': ['test run']}})
+    run_json = self._getJson('/data/runs')
+
+    # Don't check the actual timestamp since it's time-dependent.
+    self.assertTrue(isinstance(run_json['run1']['firstEventTimestamp'],
+                               numbers.Number))
+    del run_json['run1']['firstEventTimestamp']
+    self.assertEqual(run_json, {'run1': {'compressedHistograms': ['histogram'],
+                                         'scalars': ['simple_values'],
+                                         'histograms': ['histogram'],
+                                         'images': ['image'],
+                                         'audio': ['audio'],
+                                         'graph': True,
+                                         'run_metadata': ['test run']}})
 
   def testHistograms(self):
     """Test the format of /data/histograms."""
@@ -154,13 +149,26 @@ class TensorboardServerTest(tf.test.TestCase):
     response = self._get('/data/individualImage?%s' % image_query)
     self.assertEqual(response.status, 200)
 
+  def testAudio(self):
+    """Test listing audio and retrieving an individual audio clip."""
+    audio_json = self._getJson('/data/audio?tag=audio&run=run1')
+    audio_query = audio_json[0]['query']
+    # We don't care about the format of the audio query.
+    del audio_json[0]['query']
+    self.assertEqual(audio_json, [{
+        'wall_time': 0,
+        'step': 0,
+        'content_type': 'audio/wav'
+    }])
+    response = self._get('/data/individualAudio?%s' % audio_query)
+    self.assertEqual(response.status, 200)
+
   def testGraph(self):
     """Test retrieving the graph definition."""
     response = self._get('/data/graph?run=run1&limit_attr_size=1024'
                          '&large_attrs_key=_very_large_attrs')
     self.assertEqual(response.status, 200)
-    # Decompress (unzip) the response, since graphs come gzipped.
-    graph_pbtxt = self._decodeResponse(response)
+    graph_pbtxt = response.read()
     # Parse the graph from pbtxt into a graph message.
     graph = tf.GraphDef()
     graph = text_format.Parse(graph_pbtxt, graph)
@@ -173,12 +181,40 @@ class TensorboardServerTest(tf.test.TestCase):
     self.assertEqual(graph.node[1].attr['_very_large_attrs'].list.s,
                      [b'very_large_attr'])
 
+  def testAcceptGzip_compressesResponse(self):
+    response = self._get('/data/graph?run=run1&limit_attr_size=1024'
+                         '&large_attrs_key=_very_large_attrs',
+                         {'Accept-Encoding': 'gzip'})
+    self.assertEqual(response.status, 200)
+    self.assertEqual(response.getheader('Content-Encoding'), 'gzip')
+    pbtxt = gzip.GzipFile('', 'rb', 9, BytesIO(response.read())).read()
+    graph = text_format.Parse(pbtxt, tf.GraphDef())
+    self.assertEqual(len(graph.node), 2)
+
+  def testAcceptAnyEncoding_compressesResponse(self):
+    response = self._get('/data/graph?run=run1&limit_attr_size=1024'
+                         '&large_attrs_key=_very_large_attrs',
+                         {'Accept-Encoding': '*'})
+    self.assertEqual(response.status, 200)
+    self.assertEqual(response.getheader('Content-Encoding'), 'gzip')
+    pbtxt = gzip.GzipFile('', 'rb', 9, BytesIO(response.read())).read()
+    graph = text_format.Parse(pbtxt, tf.GraphDef())
+    self.assertEqual(len(graph.node), 2)
+
+  def testAcceptDoodleEncoding_doesNotCompressResponse(self):
+    response = self._get('/data/graph?run=run1&limit_attr_size=1024'
+                         '&large_attrs_key=_very_large_attrs',
+                         {'Accept-Encoding': 'doodle'})
+    self.assertEqual(response.status, 200)
+    self.assertIsNone(response.getheader('Content-Encoding'))
+    graph = text_format.Parse(response.read(), tf.GraphDef())
+    self.assertEqual(len(graph.node), 2)
+
   def testRunMetadata(self):
     """Test retrieving the run metadata information."""
     response = self._get('/data/run_metadata?run=run1&tag=test%20run')
     self.assertEqual(response.status, 200)
-    # Decompress (unzip) the response, since run outputs come gzipped.
-    run_metadata_pbtxt = self._decodeResponse(response)
+    run_metadata_pbtxt = response.read()
     # Parse from pbtxt into a message.
     run_metadata = tf.RunMetadata()
     text_format.Parse(run_metadata_pbtxt, run_metadata)
@@ -230,13 +266,22 @@ class TensorboardServerTest(tf.test.TestCase):
                                    width=1,
                                    colorspace=1,
                                    encoded_image_string=encoded_image)
+
+    audio_value = tf.Summary.Audio(sample_rate=44100,
+                                   length_frames=22050,
+                                   num_channels=2,
+                                   encoded_audio_string=b'',
+                                   content_type='audio/wav')
     writer.add_event(tf.Event(wall_time=0,
                               step=0,
-                              summary=tf.Summary(value=[tf.Summary.Value(
-                                  tag='histogram',
-                                  histo=histogram_value), tf.Summary.Value(
-                                      tag='image',
-                                      image=image_value)])))
+                              summary=tf.Summary(value=[
+                                  tf.Summary.Value(tag='histogram',
+                                                   histo=histogram_value),
+                                  tf.Summary.Value(tag='image',
+                                                   image=image_value),
+                                  tf.Summary.Value(tag='audio',
+                                                   audio=audio_value)
+                              ])))
 
     # Write 100 simple values.
     for i in xrange(1, self._SCALAR_COUNT + 1):
@@ -253,10 +298,52 @@ class TensorboardServerTest(tf.test.TestCase):
 
 class ParseEventFilesSpecTest(tf.test.TestCase):
 
+  def testRunName(self):
+    logdir_string = 'lol:/cat'
+    expected = {'/cat': 'lol'}
+    self.assertEqual(server.ParseEventFilesSpec(logdir_string), expected)
+
+  def testPathWithColonThatComesAfterASlash_isNotConsideredARunName(self):
+    logdir_string = '/lol:/cat'
+    expected = {'/lol:/cat': None}
+    self.assertEqual(server.ParseEventFilesSpec(logdir_string), expected)
+
+  def testMultipleDirectories(self):
+    logdir_string = '/a,/b'
+    expected = {'/a': None, '/b': None}
+    self.assertEqual(server.ParseEventFilesSpec(logdir_string), expected)
+
+  def testNormalizesPaths(self):
+    logdir_string = '/lol/.//cat/../cat'
+    expected = {'/lol/cat': None}
+    self.assertEqual(server.ParseEventFilesSpec(logdir_string), expected)
+
+  def testAbsolutifies(self):
+    logdir_string = 'lol/cat'
+    expected = {os.path.realpath('lol/cat'): None}
+    self.assertEqual(server.ParseEventFilesSpec(logdir_string), expected)
+
   def testRespectsGCSPath(self):
     logdir_string = 'gs://foo/path'
     expected = {'gs://foo/path': None}
     self.assertEqual(server.ParseEventFilesSpec(logdir_string), expected)
+
+  def testDoesNotExpandUserInGCSPath(self):
+    logdir_string = 'gs://~/foo/path'
+    expected = {'gs://~/foo/path': None}
+    self.assertEqual(server.ParseEventFilesSpec(logdir_string), expected)
+
+  def testDoesNotNormalizeGCSPath(self):
+    logdir_string = 'gs://foo/./path//..'
+    expected = {'gs://foo/./path//..': None}
+    self.assertEqual(server.ParseEventFilesSpec(logdir_string), expected)
+
+
+class TensorBoardAssetsTest(tf.test.TestCase):
+
+  def testTagFound(self):
+    tag = resource_loader.load_resource('tensorboard/TAG')
+    self.assertTrue(tag)
 
 
 if __name__ == '__main__':

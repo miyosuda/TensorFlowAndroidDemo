@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -112,6 +112,9 @@ class Session {
   /// REQUIRES: The name of each Tensor of the input or output must
   /// match a "Tensor endpoint" in the `GraphDef` passed to `Create()`.
   ///
+  /// REQUIRES: At least one of `output_tensor_names` and
+  /// `target_node_names` must be non-empty.
+  ///
   /// REQUIRES: outputs is not nullptr if `output_tensor_names` is non-empty.
   virtual Status Run(const std::vector<std::pair<string, Tensor> >& inputs,
                      const std::vector<string>& output_tensor_names,
@@ -188,6 +191,18 @@ Session* NewSession(const SessionOptions& options);
 /// `*out_session`, and this function will return `OK()`. Otherwise, this
 /// function will return an error status.
 Status NewSession(const SessionOptions& options, Session** out_session);
+
+/// \brief Resets resource containers associated with a target.
+///
+/// `containers` is a vector of string representation of resource container
+/// names. When a resource container is reset, the resources held by the
+/// container will be released. In particular, all Variables in the container
+/// will become undefined.
+///
+/// If Reset succeeds, this function will return `OK()`. Otherwise, this
+/// function will return an error status.
+Status Reset(const SessionOptions& options,
+             const std::vector<string>& containers);
 
 }  // end namespace tensorflow
 

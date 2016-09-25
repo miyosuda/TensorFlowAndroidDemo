@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,13 +24,8 @@ import tensorflow as tf
 
 class DeterminantOpTest(tf.test.TestCase):
 
-  def _compareDeterminant(self, matrix_x):
-    with self.test_session():
-      if matrix_x.ndim == 2:
-        tf_ans = tf.matrix_determinant(matrix_x)
-      else:
-        tf_ans = tf.batch_matrix_determinant(matrix_x)
-      out = tf_ans.eval()
+  def _compareDeterminantBase(self, matrix_x, tf_ans):
+    out = tf_ans.eval()
     shape = matrix_x.shape
     if shape[-1] == 0 and shape[-2] == 0:
       np_ans = np.ones(shape[:-2]).astype(matrix_x.dtype)
@@ -38,6 +33,15 @@ class DeterminantOpTest(tf.test.TestCase):
       np_ans = np.array(np.linalg.det(matrix_x)).astype(matrix_x.dtype)
     self.assertAllClose(np_ans, out)
     self.assertShapeEqual(np_ans, tf_ans)
+
+  def _compareDeterminant(self, matrix_x):
+    with self.test_session():
+      # Check the batch version, which should work for ndim >= 2
+      self._compareDeterminantBase(
+          matrix_x, tf.batch_matrix_determinant(matrix_x))
+      if matrix_x.ndim == 2:
+        # Check the simple version
+        self._compareDeterminantBase(matrix_x, tf.matrix_determinant(matrix_x))
 
   def testBasic(self):
     # 2x2 matrices

@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@ from tensorflow.core.framework import graph_pb2
 from tensorflow.core.util.event_pb2 import SessionLog
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import googletest
-from tensorflow.python.platform import logging
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import event_accumulator as ea
 
 
@@ -87,6 +87,24 @@ class _EventGenerator(object):
                                                                 image=image)]))
     self.AddEvent(event)
 
+  def AddAudio(self,
+               tag,
+               wall_time=0,
+               step=0,
+               encoded_audio_string=b'sndstr',
+               content_type='audio/wav',
+               sample_rate=44100,
+               length_frames=22050):
+    audio = tf.Summary.Audio(encoded_audio_string=encoded_audio_string,
+                             content_type=content_type,
+                             sample_rate=sample_rate,
+                             length_frames=length_frames)
+    event = tf.Event(wall_time=wall_time,
+                     step=step,
+                     summary=tf.Summary(value=[tf.Summary.Value(tag=tag,
+                                                                audio=audio)]))
+    self.AddEvent(event)
+
   def AddEvent(self, event):
     self.items.append(event)
 
@@ -113,6 +131,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     super(MockingEventAccumulatorTest, self).setUp()
     self.stubs = googletest.StubOutForTesting()
     self.empty = {ea.IMAGES: [],
+                  ea.AUDIO: [],
                   ea.SCALARS: [],
                   ea.HISTOGRAMS: [],
                   ea.COMPRESSED_HISTOGRAMS: [],
@@ -146,10 +165,13 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     gen.AddHistogram('hst2')
     gen.AddImage('im1')
     gen.AddImage('im2')
+    gen.AddAudio('snd1')
+    gen.AddAudio('snd2')
     acc = ea.EventAccumulator(gen)
     acc.Reload()
     self.assertTagsEqual(acc.Tags(), {
         ea.IMAGES: ['im1', 'im2'],
+        ea.AUDIO: ['snd1', 'snd2'],
         ea.SCALARS: ['s1', 's2'],
         ea.HISTOGRAMS: ['hst1', 'hst2'],
         ea.COMPRESSED_HISTOGRAMS: ['hst1', 'hst2'],
@@ -168,10 +190,12 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     gen.AddHistogram('hst2')
     gen.AddImage('im1')
     gen.AddImage('im2')
-    self.assertEqual(acc.Tags(), self.empty)
+    gen.AddAudio('snd1')
+    gen.AddAudio('snd2')
     acc.Reload()
     self.assertTagsEqual(acc.Tags(), {
         ea.IMAGES: ['im1', 'im2'],
+        ea.AUDIO: ['snd1', 'snd2'],
         ea.SCALARS: ['s1', 's2'],
         ea.HISTOGRAMS: ['hst1', 'hst2'],
         ea.COMPRESSED_HISTOGRAMS: ['hst1', 'hst2'],
@@ -398,17 +422,38 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     self.assertEqual(acc.Images('im1'), [im1])
     self.assertEqual(acc.Images('im2'), [im2])
 
-  def testActivation(self):
+  def testAudio(self):
     gen = _EventGenerator()
     acc = ea.EventAccumulator(gen)
-    self.assertFalse(acc._activated)
-    with self.assertRaises(RuntimeError):
-      acc.Tags()
-    with self.assertRaises(RuntimeError):
-      acc.Scalars('s1')
+    snd1 = ea.AudioEvent(wall_time=1,
+                         step=10,
+                         encoded_audio_string=b'big',
+                         content_type='audio/wav',
+                         sample_rate=44100,
+                         length_frames=441000)
+    snd2 = ea.AudioEvent(wall_time=2,
+                         step=12,
+                         encoded_audio_string=b'small',
+                         content_type='audio/wav',
+                         sample_rate=44100,
+                         length_frames=44100)
+    gen.AddAudio('snd1',
+                 wall_time=1,
+                 step=10,
+                 encoded_audio_string=b'big',
+                 content_type='audio/wav',
+                 sample_rate=44100,
+                 length_frames=441000)
+    gen.AddAudio('snd2',
+                 wall_time=2,
+                 step=12,
+                 encoded_audio_string=b'small',
+                 content_type='audio/wav',
+                 sample_rate=44100,
+                 length_frames=44100)
     acc.Reload()
-    self.assertTrue(acc._activated)
-    acc._activated = False
+    self.assertEqual(acc.Audio('snd1'), [snd1])
+    self.assertEqual(acc.Audio('snd2'), [snd2])
 
   def testKeyError(self):
     gen = _EventGenerator()
@@ -428,6 +473,10 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
       acc.Images('s1')
     with self.assertRaises(KeyError):
       acc.Images('hst1')
+    with self.assertRaises(KeyError):
+      acc.Audio('s1')
+    with self.assertRaises(KeyError):
+      acc.Audio('hst1')
 
   def testNonValueEvents(self):
     """Tests that non-value events in the generator don't cause early exits."""
@@ -438,10 +487,12 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     gen.AddScalar('s3', wall_time=3, step=100, value=1)
     gen.AddHistogram('hst1')
     gen.AddImage('im1')
+    gen.AddAudio('snd1')
 
     acc.Reload()
     self.assertTagsEqual(acc.Tags(), {
         ea.IMAGES: ['im1'],
+        ea.AUDIO: ['snd1'],
         ea.SCALARS: ['s1', 's3'],
         ea.HISTOGRAMS: ['hst1'],
         ea.COMPRESSED_HISTOGRAMS: ['hst1'],
@@ -576,6 +627,38 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     self.assertEqual([x.step for x in acc.Scalars('s1')], [100, 200])
     self.assertEqual([x.step for x in acc.Scalars('s2')], [])
 
+  def testFirstEventTimestamp(self):
+    """Test that FirstEventTimestamp() returns wall_time of the first event."""
+    gen = _EventGenerator()
+    acc = ea.EventAccumulator(gen)
+    gen.AddEvent(tf.Event(wall_time=10, step=20, file_version='brain.Event:2'))
+    gen.AddScalar('s1', wall_time=30, step=40, value=20)
+    self.assertEqual(acc.FirstEventTimestamp(), 10)
+
+  def testReloadPopulatesFirstEventTimestamp(self):
+    """Test that Reload() means FirstEventTimestamp() won't load events."""
+    gen = _EventGenerator()
+    acc = ea.EventAccumulator(gen)
+    gen.AddEvent(tf.Event(wall_time=1, step=2, file_version='brain.Event:2'))
+
+    acc.Reload()
+
+    def _Die(*args, **kwargs):  # pylint: disable=unused-argument
+      raise RuntimeError('Load() should not be called')
+
+    self.stubs.Set(gen, 'Load', _Die)
+    self.assertEqual(acc.FirstEventTimestamp(), 1)
+
+  def testFirstEventTimestampLoadsEvent(self):
+    """Test that FirstEventTimestamp() doesn't discard the loaded event."""
+    gen = _EventGenerator()
+    acc = ea.EventAccumulator(gen)
+    gen.AddEvent(tf.Event(wall_time=1, step=2, file_version='brain.Event:2'))
+
+    self.assertEqual(acc.FirstEventTimestamp(), 1)
+    acc.Reload()
+    self.assertEqual(acc.file_version, 2.0)
+
 
 class RealisticEventAccumulatorTest(EventAccumulatorTest):
 
@@ -607,7 +690,7 @@ class RealisticEventAccumulatorTest(EventAccumulatorTest):
     device_stats.device = 'test device'
     writer.add_run_metadata(run_metadata, 'test run')
 
-    # Write a bunch of events using the writer
+    # Write a bunch of events using the writer.
     for i in xrange(30):
       summ_id = FakeScalarSummary('id', i)
       summ_sq = FakeScalarSummary('sq', i * i)
@@ -618,14 +701,17 @@ class RealisticEventAccumulatorTest(EventAccumulatorTest):
     # Verify that we can load those events properly
     acc = ea.EventAccumulator(directory)
     acc.Reload()
-    self.assertTagsEqual(acc.Tags(), {
-        ea.IMAGES: [],
-        ea.SCALARS: ['id', 'sq'],
-        ea.HISTOGRAMS: [],
-        ea.COMPRESSED_HISTOGRAMS: [],
-        ea.GRAPH: True,
-        ea.RUN_METADATA: ['test run']
-    })
+    self.assertTagsEqual(
+        acc.Tags(),
+        {
+            ea.IMAGES: [],
+            ea.AUDIO: [],
+            ea.SCALARS: ['id', 'sq'],
+            ea.HISTOGRAMS: [],
+            ea.COMPRESSED_HISTOGRAMS: [],
+            ea.GRAPH: True,
+            ea.RUN_METADATA: ['test run']
+        })
     id_events = acc.Scalars('id')
     sq_events = acc.Scalars('sq')
     self.assertEqual(30, len(id_events))

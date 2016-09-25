@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,6 +14,7 @@
 # ==============================================================================
 
 from __future__ import absolute_import
+from __future__ import division
 from __future__ import print_function
 
 import collections
@@ -50,7 +51,7 @@ filename = maybe_download('text8.zip', 31344016)
 def read_data(filename):
   """Extract the first file enclosed in a zip file as a list of words"""
   with zipfile.ZipFile(filename) as f:
-    data = f.read(f.namelist()[0]).split()
+    data = tf.compat.as_str(f.read(f.namelist()[0])).split()
   return data
 
 words = read_data(filename)
@@ -171,12 +172,15 @@ with graph.as_default():
   similarity = tf.matmul(
       valid_embeddings, normalized_embeddings, transpose_b=True)
 
+  # Add variable initializer.
+  init = tf.initialize_all_variables()
+
 # Step 5: Begin training.
 num_steps = 100001
 
 with tf.Session(graph=graph) as session:
   # We must initialize all variables before we use them.
-  tf.initialize_all_variables().run()
+  init.run()
   print("Initialized")
 
   average_loss = 0
@@ -239,4 +243,4 @@ try:
   plot_with_labels(low_dim_embs, labels)
 
 except ImportError:
-  print("Please install sklearn and matplotlib to visualize embeddings.")
+  print("Please install sklearn, matplotlib, and scipy to visualize embeddings.")

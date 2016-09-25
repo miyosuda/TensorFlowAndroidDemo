@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -210,7 +210,7 @@ class ExponentialMovingAverage(object):
   def __init__(self, decay, num_updates=None, name="ExponentialMovingAverage"):
     """Creates a new ExponentialMovingAverage object.
 
-    The `Apply()` method has to be called to create shadow variables and add
+    The `apply()` method has to be called to create shadow variables and add
     ops to maintain moving averages.
 
     The optional `num_updates` parameter allows one to tweak the decay rate
@@ -225,7 +225,7 @@ class ExponentialMovingAverage(object):
       decay: Float.  The decay to use.
       num_updates: Optional count of number of updates applied to variables.
       name: String. Optional prefix name to use for the name of ops added in
-        `Apply()`.
+        `apply()`.
     """
     self._decay = decay
     self._num_updates = num_updates
@@ -252,13 +252,13 @@ class ExponentialMovingAverage(object):
 
     Args:
       var_list: A list of Variable or Tensor objects. The variables
-        and Tensors must be of types float32 or float64.
+        and Tensors must be of types float16, float32, or float64.
 
     Returns:
       An Operation that updates the moving averages.
 
     Raises:
-      TypeError: If the arguments are not all float32 or float64.
+      TypeError: If the arguments are not all float16, float32, or float64.
       ValueError: If the moving average of one of the variables is already
         being computed.
     """
@@ -266,8 +266,10 @@ class ExponentialMovingAverage(object):
     if var_list is None:
       var_list = variables.trainable_variables()
     for var in var_list:
-      if var.dtype.base_dtype not in [dtypes.float32, dtypes.float64]:
-        raise TypeError("The variables must be float or double: %s" % var.name)
+      if var.dtype.base_dtype not in [dtypes.float16, dtypes.float32,
+                                      dtypes.float64]:
+        raise TypeError("The variables must be half, float, or double: %s" %
+                        var.name)
       if var in self._averages:
         raise ValueError("Moving average already computed for: %s" % var.name)
 
@@ -337,9 +339,12 @@ class ExponentialMovingAverage(object):
       by the `ExponentialMovingAverage class` to hold the moving average of
       `var`.
     """
-    return var.op.name + "/" + self._name
+    if var in self._averages:
+      return self._averages[var].op.name
+    return ops.get_default_graph().unique_name(
+        var.op.name + "/" + self._name, mark_as_used=False)
 
-  def variables_to_restore(self):
+  def variables_to_restore(self, moving_avg_variables=None):
     """Returns a map of names to `Variables` to restore.
 
     If a variable has a moving average, use the moving average variable name as
@@ -359,6 +364,10 @@ class ExponentialMovingAverage(object):
       conv_4/conv2d_params/ExponentialMovingAverage: conv_4/conv2d_params,
       global_step: global_step
     ```
+    Args:
+      moving_avg_variables: a list of variables that require to use of the
+        moving variable name to be restored. If None, it will default to
+        variables.moving_average_variables() + variables.trainable_variables()
 
     Returns:
       A map from restore_names to variables. The restore_name can be the
@@ -366,15 +375,18 @@ class ExponentialMovingAverage(object):
       variable name.
     """
     name_map = {}
-    # Collect all the variables with moving average, including all
-    # the trainable variables and variables which have been explicitly
-    # added to the collection.
-    moving_avg_variables = list(set(variables.moving_average_variables() +
-                                    variables.trainable_variables()))
+    if moving_avg_variables is None:
+      # Include trainable variables and variables which have been explicitly
+      # added to the moving_average_variables collection.
+      moving_avg_variables = variables.trainable_variables()
+      moving_avg_variables += variables.moving_average_variables()
+    # Remove duplicates
+    moving_avg_variables = set(moving_avg_variables)
+    # Collect all the variables with moving average,
     for v in moving_avg_variables:
       name_map[self.average_name(v)] = v
     # Make sure we restore variables without moving average as well.
-    for v in list(set(variables.all_variables()) - set(moving_avg_variables)):
+    for v in list(set(variables.all_variables()) - moving_avg_variables):
       if v.op.name not in name_map:
         name_map[v.op.name] = v
     return name_map

@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -70,6 +70,7 @@ def _Repeat(value, dim):
   if dim == 1:
     return value
   return [value] * dim
+
 
 class ExponentialMovingAverageTest(tf.test.TestCase):
 
@@ -181,30 +182,89 @@ class ExponentialMovingAverageTest(tf.test.TestCase):
       self.assertEqual([17.5], sess.run(v1_avg))
 
   def testAverageVariablesNames(self):
-    v0 = tf.Variable(10.0, name="v0")
-    v1 = tf.Variable(30.0, name="v1")
-    # Add a non-trainable variable.
-    v2 = tf.Variable(20.0, name="v2", trainable=False)
-    tensor2 = v0 + v1
-    ema = tf.train.ExponentialMovingAverage(0.25, name="foo_avg")
-    self.assertEqual("v0/foo_avg", ema.average_name(v0))
-    self.assertEqual("v1/foo_avg", ema.average_name(v1))
-    self.assertEqual("add/foo_avg", ema.average_name(tensor2))
-    ema.apply([v0, v1, tensor2])
-    vars_to_restore = ema.variables_to_restore()
-    # vars_to_restore should contain the following:
-    # {v0/foo_avg : v0,
-    #  v1/foo_avg : v1,
-    #  add/foo_avg : add/foo_avg
-    #  v2 : v2}
-    self.assertEqual(sorted(vars_to_restore.keys()),
-                     sorted([ema.average_name(v0),
-                             ema.average_name(v1),
-                             ema.average_name(tensor2),
-                             v2.op.name]))
-    self.assertEqual(ema.average_name(v0), ema.average(v0).op.name)
-    self.assertEqual(ema.average_name(v1), ema.average(v1).op.name)
-    self.assertEqual(ema.average_name(tensor2), ema.average(tensor2).op.name)
+    with self.test_session():
+      v0 = tf.Variable(10.0, name="v0")
+      v1 = tf.Variable(30.0, name="v1")
+      # Add a non-trainable variable.
+      v2 = tf.Variable(20.0, name="v2", trainable=False)
+      tensor2 = v0 + v1
+      ema = tf.train.ExponentialMovingAverage(0.25, name="foo_avg")
+      self.assertEqual("v0/foo_avg", ema.average_name(v0))
+      self.assertEqual("v1/foo_avg", ema.average_name(v1))
+      self.assertEqual("add/foo_avg", ema.average_name(tensor2))
+      ema.apply([v0, v1, tensor2])
+      vars_to_restore = ema.variables_to_restore()
+      # vars_to_restore should contain the following:
+      # {v0/foo_avg : v0,
+      #  v1/foo_avg : v1,
+      #  add/foo_avg : add/foo_avg
+      #  v2 : v2}
+      self.assertEqual(sorted(vars_to_restore.keys()),
+                       sorted([ema.average_name(v0),
+                               ema.average_name(v1),
+                               ema.average_name(tensor2),
+                               v2.op.name]))
+      self.assertEqual(ema.average_name(v0), ema.average(v0).op.name)
+      self.assertEqual(ema.average_name(v1), ema.average(v1).op.name)
+      self.assertEqual(ema.average_name(tensor2), ema.average(tensor2).op.name)
+
+  def testAverageVariablesNamesRespectScope(self):
+    # See discussion on #2740.
+    with self.test_session():
+      with tf.variable_scope("scope1"):
+        v0 = tf.Variable(10.0, name="v0")
+        v1 = tf.Variable(30.0, name="v1")
+        # Add a non-trainable variable.
+        v2 = tf.Variable(20.0, name="v2", trainable=False)
+        tensor2 = v0 + v1
+      with tf.variable_scope("scope2"):
+        ema = tf.train.ExponentialMovingAverage(0.25, name="foo_avg")
+        self.assertEqual("scope2/scope1/v0/foo_avg", ema.average_name(v0))
+        self.assertEqual("scope2/scope1/v1/foo_avg", ema.average_name(v1))
+        self.assertEqual("scope2/scope1/add/foo_avg", ema.average_name(tensor2))
+        ema.apply([v0, v1, tensor2])
+        vars_to_restore = ema.variables_to_restore()
+        # vars_to_restore should contain the following:
+        # {scope2/scope1/v0/foo_avg : v0,
+        #  scope2/scope1/v1/foo_avg : v1,
+        #  scope2/scope1/add/foo_avg : add/foo_avg
+        #  scope1/v2 : v2}
+        self.assertEqual(sorted(vars_to_restore.keys()),
+                         sorted([ema.average_name(v0),
+                                 ema.average_name(v1),
+                                 ema.average_name(tensor2),
+                                 v2.op.name]))
+        self.assertEqual(ema.average_name(v0), ema.average(v0).op.name)
+        self.assertEqual(ema.average_name(v1), ema.average(v1).op.name)
+        self.assertEqual(ema.average_name(tensor2),
+                         ema.average(tensor2).op.name)
+
+  def testSubsetAverageVariablesNames(self):
+    with self.test_session():
+      v0 = tf.Variable(10.0, name="v0")
+      v1 = tf.Variable(30.0, name="v1")
+      # Add a non-trainable variable.
+      v2 = tf.Variable(20.0, name="v2", trainable=False)
+      tensor2 = v0 + v1
+      ema = tf.train.ExponentialMovingAverage(0.25, name="foo_avg")
+      self.assertEqual("v0/foo_avg", ema.average_name(v0))
+      self.assertEqual("v1/foo_avg", ema.average_name(v1))
+      self.assertEqual("add/foo_avg", ema.average_name(tensor2))
+      vars_to_restore = ema.variables_to_restore([v0, tensor2])
+      # vars_to_restore should contain the following:
+      # {v0/foo_avg : v0,
+      #  add/foo_avg : add
+      #  v1 : v1,
+      #  v2 : v2}
+      self.assertEqual(sorted(vars_to_restore.keys()),
+                       sorted([ema.average_name(v0),
+                               ema.average_name(tensor2),
+                               v1.op.name,
+                               v2.op.name]))
+      ema.apply([v0, v1, tensor2])
+      self.assertEqual(ema.average_name(v0), ema.average(v0).op.name)
+      self.assertEqual(ema.average_name(v1), ema.average(v1).op.name)
+      self.assertEqual(ema.average_name(tensor2), ema.average(tensor2).op.name)
 
   def testAverageVariablesDeviceAssignment(self):
     with tf.device("/job:dev_v0"):

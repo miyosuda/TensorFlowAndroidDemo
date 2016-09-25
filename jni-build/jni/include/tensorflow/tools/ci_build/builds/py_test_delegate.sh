@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,6 +23,10 @@ PYTHON_BIN_PATH=$1
 TEST_PATH=$2
 TEST_LOG=$3
 
+# Current script directory
+SCRIPT_DIR=$( cd ${0%/*} && pwd -P )
+source "${SCRIPT_DIR}/builds_common.sh"
+
 rm -f ${TEST_LOG}
 
 TEST_DIR=$(dirname ${TEST_PATH})
@@ -35,13 +39,6 @@ TEST_EXIT_CODE=$?
 
 END_TIME=$(date +'%s%N')
 
-if [[ ${START_TIME} == *"N" ]]; then
-  # Nanosecond precision not available
-  START_TIME=$(echo ${START_TIME} | sed -e 's/N//g')
-  END_TIME=$(echo ${END_TIME} | sed -e 's/N//g')
-  ELAPSED="$(expr ${END_TIME} - ${START_TIME}) s"
-else
-  ELAPSED="$(expr $(expr ${END_TIME} - ${START_TIME}) / 1000000) ms"
-fi
+ELAPSED=$(calc_elapsed_time "${START_TIME}" "${END_TIME}")
 
 echo "${TEST_EXIT_CODE} ${ELAPSED}" >> ${TEST_LOG}

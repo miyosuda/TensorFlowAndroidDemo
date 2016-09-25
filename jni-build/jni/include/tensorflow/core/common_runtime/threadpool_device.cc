@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor.pb_text.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/types.h"
 #include "tensorflow/core/lib/hash/hash.h"
@@ -61,7 +62,7 @@ Status ThreadPoolDevice::MakeTensorFromProto(
   Tensor parsed(tensor_proto.dtype());
   if (!parsed.FromProto(cpu_allocator(), tensor_proto)) {
     return errors::InvalidArgument("Cannot parse tensor from proto: ",
-                                   tensor_proto.DebugString());
+                                   ProtoDebugString(tensor_proto));
   }
   *tensor = parsed;
   return Status::OK();

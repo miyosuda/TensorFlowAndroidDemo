@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,7 +16,10 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value_util.h"
 
 #include <vector>
+#include "tensorflow/core/framework/attr_value.pb_text.h"
+#include "tensorflow/core/framework/tensor.pb_text.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb_text.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -34,7 +37,7 @@ string SummarizeTensor(const TensorProto& tensor_proto) {
   Tensor t;
   if (!t.FromProto(tensor_proto)) {
     return strings::StrCat("<Invalid TensorProto: ",
-                           tensor_proto.ShortDebugString(), ">");
+                           ProtoShortDebugString(tensor_proto), ">");
   }
   return t.DebugString();
 }
@@ -52,7 +55,7 @@ string SummarizeAttrValue(const AttrValue& attr_value) {
     case AttrValue::kB:
       return attr_value.b() ? "true" : "false";
     case AttrValue::kType:
-      return DataType_Name(attr_value.type());
+      return EnumName_DataType(attr_value.type());
     case AttrValue::kShape:
       return PartialTensorShape::DebugString(attr_value.shape());
     case AttrValue::kTensor:
@@ -82,7 +85,8 @@ string SummarizeAttrValue(const AttrValue& attr_value) {
       } else if (attr_value.list().type_size() > 0) {
         for (int i = 0; i < attr_value.list().type_size(); ++i) {
           if (i > 0) strings::StrAppend(&ret, ", ");
-          strings::StrAppend(&ret, DataType_Name(attr_value.list().type(i)));
+          strings::StrAppend(&ret,
+                             EnumName_DataType(attr_value.list().type(i)));
         }
       } else if (attr_value.list().shape_size() > 0) {
         for (int i = 0; i < attr_value.list().shape_size(); ++i) {
@@ -270,8 +274,7 @@ bool ParseAttrValue(StringPiece type, StringPiece text, AttrValue* out) {
     to_parse = strings::StrCat(field_name, ": ", text);
   }
 
-  // Parse if we can.
-  return protobuf::TextFormat::ParseFromString(to_parse, out);
+  return ProtoParseFromString(to_parse, out);
 }
 
 #define DEFINE_SET_ATTR_VALUE_ONE(ARG_TYPE, FIELD) \
@@ -305,8 +308,19 @@ void SetAttrValue(StringPiece value, AttrValue* out) {
   out->set_s(value.data(), value.size());
 }
 
+void SetAttrValue(const gtl::ArraySlice<StringPiece> value, AttrValue* out) {
+  out->mutable_list();  // Create list() even if value empty.
+  for (const auto& v : value) {
+    out->mutable_list()->add_s(v.data(), v.size());
+  }
+}
+
 void SetAttrValue(const TensorShape& value, AttrValue* out) {
   value.AsProto(out->mutable_shape());
+}
+
+void SetAttrValue(const TensorShapeProto& value, AttrValue* out) {
+  *out->mutable_shape() = value;
 }
 
 void SetAttrValue(const PartialTensorShape& value, AttrValue* out) {
@@ -317,6 +331,13 @@ void SetAttrValue(const gtl::ArraySlice<TensorShape> value, AttrValue* out) {
   out->mutable_list();  // Create list() even if value empty.
   for (const auto& v : value) {
     v.AsProto(out->mutable_list()->add_shape());
+  }
+}
+
+void SetAttrValue(gtl::ArraySlice<TensorShapeProto> value, AttrValue* out) {
+  out->mutable_list();  // Create list() even if value empty.
+  for (const auto& v : value) {
+    *out->mutable_list()->add_shape() = v;
   }
 }
 

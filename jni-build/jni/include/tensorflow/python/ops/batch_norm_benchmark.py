@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -37,7 +37,7 @@ def batch_norm_op(tensor, mean, variance, beta, gamma, scale):
   # pylint: enable=protected-access
 
 
-# Note that the naive implementation is much much slower:
+# Note that the naive implementation is much slower:
 # batch_norm = (tensor - mean) * tf.rsqrt(variance + 0.001)
 # if scale:
 #   batch_norm *= gamma

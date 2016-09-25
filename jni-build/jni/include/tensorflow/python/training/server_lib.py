@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -26,7 +26,8 @@ from tensorflow.python.framework import errors
 from tensorflow.python.util import compat
 
 
-def _make_server_def(server_or_cluster_def, job_name, task_index, protocol):
+def _make_server_def(server_or_cluster_def, job_name, task_index, protocol,
+                     config):
   """Creates a `tf.train.ServerDef` protocol buffer.
 
   Args:
@@ -43,6 +44,8 @@ def _make_server_def(server_or_cluster_def, job_name, task_index, protocol):
     protocol: (Optional.) Specifies the protocol to be used by the server.
       Acceptable values include `"grpc"`. Defaults to the value in
       `server_or_cluster_def`, if specified. Otherwise defaults to `"grpc"`.
+    config: (Options.) A `tf.ConfigProto` that specifies default configuration
+      options for all sessions that run on this server.
 
   Returns:
     A `tf.train.ServerDef`.
@@ -60,6 +63,8 @@ def _make_server_def(server_or_cluster_def, job_name, task_index, protocol):
       server_def.task_index = task_index
     if protocol is not None:
       server_def.protocol = protocol
+    if config is not None:
+      server_def.default_session_config.MergeFrom(config)
   else:
     try:
       cluster_spec = ClusterSpec(server_or_cluster_def)
@@ -82,6 +87,8 @@ def _make_server_def(server_or_cluster_def, job_name, task_index, protocol):
     server_def = tensorflow_server_pb2.ServerDef(
         cluster=cluster_spec.as_cluster_def(),
         job_name=job_name, task_index=task_index, protocol=protocol)
+    if config is not None:
+      server_def.default_session_config.MergeFrom(config)
   return server_def
 
 
@@ -98,6 +105,7 @@ class Server(object):
   @@__init__
   @@create_local_server
   @@target
+  @@server_def
 
   @@start
   @@join
@@ -108,6 +116,7 @@ class Server(object):
                job_name=None,
                task_index=None,
                protocol=None,
+               config=None,
                start=True):
     """Creates a new server with the given definition.
 
@@ -128,30 +137,54 @@ class Server(object):
       protocol: (Optional.) Specifies the protocol to be used by the server.
         Acceptable values include `"grpc"`. Defaults to the value in
         `server_or_cluster_def`, if specified. Otherwise defaults to `"grpc"`.
+      config: (Options.) A `tf.ConfigProto` that specifies default
+        configuration options for all sessions that run on this server.
       start: (Optional.) Boolean, indicating whether to start the server
         after creating it. Defaults to `True`.
+
+    Raises:
+      tf.errors.OpError: Or one of its subclasses if an error occurs while
+        creating the TensorFlow server.
     """
-    server_def = _make_server_def(server_or_cluster_def,
-                                  job_name, task_index, protocol)
-    try:
-      self._server = pywrap_tensorflow.NewServer(server_def.SerializeToString())
-    except pywrap_tensorflow.StatusNotOK as e:
-      # pylint: disable=protected-access
-      raise errors._make_specific_exception(None, None, e.error_message, e.code)
-      # pylint: enable=protected-access
+    self._server_def = _make_server_def(server_or_cluster_def,
+                                        job_name, task_index, protocol, config)
+    with errors.raise_exception_on_not_ok_status() as status:
+      self._server = pywrap_tensorflow.PyServer_New(
+          self._server_def.SerializeToString(), status)
     if start:
       self.start()
 
   def start(self):
-    """Starts this server."""
-    self._server.Start()
+    """Starts this server.
+
+    Raises:
+      tf.errors.OpError: Or one of its subclasses if an error occurs while
+        starting the TensorFlow server.
+    """
+    with errors.raise_exception_on_not_ok_status() as status:
+      pywrap_tensorflow.PyServer_Start(self._server, status)
 
   def join(self):
     """Blocks until the server has shut down.
 
     This method currently blocks forever.
+
+    Raises:
+      tf.errors.OpError: Or one of its subclasses if an error occurs while
+        joining the TensorFlow server.
     """
-    self._server.Join()
+    with errors.raise_exception_on_not_ok_status() as status:
+      pywrap_tensorflow.PyServer_Join(self._server, status)
+
+  @property
+  def server_def(self):
+    """Returns the `tf.train.ServerDef` for this server.
+
+    Returns:
+      A `tf.train.ServerDef` prototocol buffer that describes the configuration
+      of this server.
+    """
+    return self._server_def
 
   @property
   def target(self):
@@ -173,7 +206,7 @@ class Server(object):
     return self._server.target()
 
   @staticmethod
-  def create_local_server(start=True):
+  def create_local_server(config=None, start=True):
     """Creates a new single-process cluster running on the local host.
 
     This method is a convenience wrapper for creating a
@@ -182,6 +215,8 @@ class Server(object):
     `"local"`.
 
     Args:
+      config: (Options.) A `tf.ConfigProto` that specifies default
+        configuration options for all sessions that run on this server.
       start: (Optional.) Boolean, indicating whether to start the server after
         creating it. Defaults to `True`.
 
@@ -190,7 +225,8 @@ class Server(object):
     """
     # Specifying port 0 means that the OS will choose a free port for the
     # server.
-    return Server({"local": ["localhost:0"]}, protocol="grpc", start=start)
+    return Server({"local": ["localhost:0"]}, protocol="grpc", config=config,
+                  start=start)
 
 
 class ClusterSpec(object):

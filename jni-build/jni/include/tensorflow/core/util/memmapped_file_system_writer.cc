@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,10 +20,8 @@ namespace tensorflow {
 
 Status MemmappedFileSystemWriter::InitializeToFile(Env* env,
                                                    const string& filename) {
-  WritableFile* writable_file;
-  auto status = env->NewWritableFile(filename, &writable_file);
+  auto status = env->NewWritableFile(filename, &output_file_);
   if (status.ok()) {
-    output_file_.reset(writable_file);
     output_file_offset_ = 0;
   }
   return status;
@@ -83,7 +81,7 @@ Status MemmappedFileSystemWriter::SaveProtobuf(
 namespace {
 
 StringPiece EncodeUint64LittleEndian(uint64 val, char* output_buffer) {
-  for (int i = 0; i < sizeof(uint64); ++i) {
+  for (unsigned int i = 0; i < sizeof(uint64); ++i) {
     output_buffer[i] = (val >> i * 8);
   }
   return {output_buffer, sizeof(uint64)};

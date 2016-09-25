@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -45,7 +45,7 @@ class StepStatsCollector;
 // with no GPU tracing support, 'CreateGPUTracer' will return 'nullptr'.
 // On most plaforms, GPU tracing will be a system-wide activity and
 // a single 'GPUTracer' will collect activity from all GPUs.
-// It is also common that only a single tracer may be active at at any
+// It is also common that only a single tracer may be active at any
 // given time.  The 'Start' method will return an error if tracing is
 // already in progress elsewhere.
 //

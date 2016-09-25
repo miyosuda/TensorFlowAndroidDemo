@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -47,6 +47,24 @@ Status GetSymbolFromLibrary(void* handle, const char* symbol_name,
     return errors::NotFound(dlerror());
   }
   return Status::OK();
+}
+
+string FormatLibraryFileName(const string& name, const string& version) {
+  string filename;
+#if defined(__APPLE__)
+  if (version.size() == 0) {
+    filename = "lib" + name + ".dylib";
+  } else {
+    filename = "lib" + name + "." + version + ".dylib";
+  }
+#else
+  if (version.size() == 0) {
+    filename = "lib" + name + ".so";
+  } else {
+    filename = "lib" + name + ".so" + "." + version;
+  }
+#endif
+  return filename;
 }
 
 }  // namespace internal

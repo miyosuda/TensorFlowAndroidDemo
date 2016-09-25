@@ -10,10 +10,10 @@ answer on one of the TensorFlow [community resources](../resources/index.md).
 
 #### Can I run distributed training on multiple computers?
 
-The initial open-source release of TensorFlow supports multiple devices (CPUs
-and GPUs) in a single computer. We are actively working on an open-source
-multi-machine version, and plan to release it as soon as it's ready. You can
-follow progress at the [GitHub issue](https://github.com/tensorflow/tensorflow/issues/23).
+Yes! TensorFlow gained
+[support for distributed computation](../how_tos/distributed/index.md) in
+version 0.8. TensorFlow now supports multiple devices (CPUs and GPUs) in one or
+more computers.
 
 #### Does TensorFlow work with Python 3?
 
@@ -147,7 +147,7 @@ graphs and running steps; we also have an experimental API for
 
 We would like to support more client languages, as determined by community
 interest. TensorFlow has a
-[C-based client API](https://www.tensorflow.org/code/tensorflow/core/public/tensor_c_api.h)
+[C-based client API](https://www.tensorflow.org/code/tensorflow/c/c_api.h)
 that makes it easy to build a client in many different languages. We invite
 contributions of new language bindings.
 

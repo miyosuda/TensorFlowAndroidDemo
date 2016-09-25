@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -25,139 +25,185 @@ import tensorflow as tf
 
 class MomentumOptimizerTest(tf.test.TestCase):
 
-  def testBasic(self):
-    with self.test_session():
-      var0 = tf.Variable([1.0, 2.0])
-      var1 = tf.Variable([3.0, 4.0])
-      grads0 = tf.constant([0.1, 0.1])
-      grads1 = tf.constant([0.01, 0.01])
-      mom_opt = tf.train.MomentumOptimizer(learning_rate=2.0, momentum=0.9)
-      mom_update = mom_opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-      tf.initialize_all_variables().run()
-      # Check we have slots
-      self.assertEqual(["momentum"], mom_opt.get_slot_names())
-      slot0 = mom_opt.get_slot(var0, "momentum")
-      self.assertEquals(slot0.get_shape(), var0.get_shape())
-      self.assertFalse(slot0 in tf.trainable_variables())
-      slot1 = mom_opt.get_slot(var1, "momentum")
-      self.assertEquals(slot1.get_shape(), var1.get_shape())
-      self.assertFalse(slot1 in tf.trainable_variables())
+  def _update_nesterov_momentum_numpy(self, var, accum, g, lr, momentum):
+    var = var + accum * lr * momentum
+    accum = accum * momentum + g
+    var = var - lr * accum
+    var = var - accum * lr * momentum
+    return var, accum
 
-      # Fetch params to validate initial values
-      self.assertAllClose([1.0, 2.0], var0.eval())
-      self.assertAllClose([3.0, 4.0], var1.eval())
-      # Step 1: the momentum accumulators where 0. So we should see a normal
-      # update: v -= grad * learning_rate
-      mom_update.run()
-      # Check that the momentum accumulators have been updated.
-      self.assertAllClose(np.array([0.1, 0.1]), slot0.eval())
-      self.assertAllClose(np.array([0.01, 0.01]), slot1.eval())
-      # Check that the parameters have been updated.
-      self.assertAllClose(np.array([1.0 - (0.1 * 2.0),
-                                    2.0 - (0.1 * 2.0)]),
-                          var0.eval())
-      self.assertAllClose(np.array([3.0 - (0.01 * 2.0),
-                                    4.0 - (0.01 * 2.0)]),
-                          var1.eval())
-      # Step 2: the momentum accumulators contain the previous update.
-      mom_update.run()
-      # Check that the momentum accumulators have been updated.
-      self.assertAllClose(np.array([(0.9 * 0.1 + 0.1), (0.9 * 0.1 + 0.1)]),
-                          slot0.eval())
-      self.assertAllClose(np.array([(0.9 * 0.01 + 0.01), (0.9 * 0.01 + 0.01)]),
-                          slot1.eval())
-      # Check that the parameters have been updated.
-      self.assertAllClose(
-          np.array([1.0 - (0.1 * 2.0) - ((0.9 * 0.1 + 0.1) * 2.0),
-                    2.0 - (0.1 * 2.0) - ((0.9 * 0.1 + 0.1) * 2.0)]),
-          var0.eval())
-      self.assertAllClose(np.array([2.98 - ((0.9 * 0.01 + 0.01) * 2.0),
-                                    3.98 - ((0.9 * 0.01 + 0.01) * 2.0)]),
-                          var1.eval())
+  def testBasic(self):
+    for dtype in [tf.half, tf.float32, tf.float64]:
+      with self.test_session():
+        var0 = tf.Variable([1.0, 2.0], dtype=dtype)
+        var1 = tf.Variable([3.0, 4.0], dtype=dtype)
+        grads0 = tf.constant([0.1, 0.1], dtype=dtype)
+        grads1 = tf.constant([0.01, 0.01], dtype=dtype)
+        mom_opt = tf.train.MomentumOptimizer(learning_rate=2.0, momentum=0.9)
+        mom_update = mom_opt.apply_gradients(
+            zip([grads0, grads1], [var0, var1]))
+        tf.initialize_all_variables().run()
+        # Check we have slots
+        self.assertEqual(["momentum"], mom_opt.get_slot_names())
+        slot0 = mom_opt.get_slot(var0, "momentum")
+        self.assertEquals(slot0.get_shape(), var0.get_shape())
+        self.assertFalse(slot0 in tf.trainable_variables())
+        slot1 = mom_opt.get_slot(var1, "momentum")
+        self.assertEquals(slot1.get_shape(), var1.get_shape())
+        self.assertFalse(slot1 in tf.trainable_variables())
+
+        # Fetch params to validate initial values
+        self.assertAllClose([1.0, 2.0], var0.eval())
+        self.assertAllClose([3.0, 4.0], var1.eval())
+        # Step 1: the momentum accumulators where 0. So we should see a normal
+        # update: v -= grad * learning_rate
+        mom_update.run()
+        # Check that the momentum accumulators have been updated.
+        self.assertAllCloseAccordingToType(np.array([0.1, 0.1]), slot0.eval())
+        self.assertAllCloseAccordingToType(np.array([0.01, 0.01]), slot1.eval())
+        # Check that the parameters have been updated.
+        self.assertAllCloseAccordingToType(np.array([1.0 - (0.1 * 2.0),
+                                                     2.0 - (0.1 * 2.0)]),
+                                           var0.eval())
+        self.assertAllCloseAccordingToType(np.array([3.0 - (0.01 * 2.0),
+                                                     4.0 - (0.01 * 2.0)]),
+                                           var1.eval())
+        # Step 2: the momentum accumulators contain the previous update.
+        mom_update.run()
+        # Check that the momentum accumulators have been updated.
+        self.assertAllCloseAccordingToType(
+            np.array([(0.9 * 0.1 + 0.1), (0.9 * 0.1 + 0.1)]),
+            slot0.eval())
+        self.assertAllCloseAccordingToType(
+            np.array([(0.9 * 0.01 + 0.01), (0.9 * 0.01 + 0.01)]),
+            slot1.eval())
+        # Check that the parameters have been updated.
+        self.assertAllCloseAccordingToType(
+            np.array([1.0 - (0.1 * 2.0) - ((0.9 * 0.1 + 0.1) * 2.0),
+                      2.0 - (0.1 * 2.0) - ((0.9 * 0.1 + 0.1) * 2.0)]),
+            var0.eval())
+        self.assertAllCloseAccordingToType(
+            np.array([2.98 - ((0.9 * 0.01 + 0.01) * 2.0),
+                      3.98 - ((0.9 * 0.01 + 0.01) * 2.0)]),
+            var1.eval())
+
+  def testNesterovMomentum(self):
+    for dtype in [tf.float32, tf.float64]:
+      with self.test_session():
+        var0 = tf.Variable([1.0, 2.0], dtype=dtype)
+        var1 = tf.Variable([3.0, 4.0], dtype=dtype)
+        var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
+        var1_np = np.array([3.0, 4.0], dtype=dtype.as_numpy_dtype)
+        accum0_np = np.array([0.0, 0.0], dtype=dtype.as_numpy_dtype)
+        accum1_np = np.array([0.0, 0.0], dtype=dtype.as_numpy_dtype)
+        cost = 5 * var0 * var0 + 3 * var1
+        global_step = tf.Variable(tf.zeros([], tf.int64), name='global_step')
+        mom_op = tf.train.MomentumOptimizer(learning_rate=2.0, momentum=0.9,
+            use_nesterov=True)
+        opt_op = mom_op.minimize(cost, global_step, [var0, var1])
+        tf.initialize_all_variables().run()
+        for t in range(1, 5):
+          opt_op.run()
+          var0_np, accum0_np = self._update_nesterov_momentum_numpy(var0_np,
+              accum0_np, var0_np * 10, 2.0, 0.9)
+          var1_np, accum1_np = self._update_nesterov_momentum_numpy(var1_np,
+              accum1_np, 3, 2.0, 0.9)
+          self.assertAllClose(var0_np, var0.eval())
+          self.assertAllClose(var1_np, var1.eval())
+
+  def testSparseNesterovMomentum(self):
+    for dtype in [tf.float32, tf.float64]:
+      with self.test_session():
+        var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
+        var1_np = np.array([3.0, 4.0], dtype=dtype.as_numpy_dtype)
+        accum0_np = np.array([0.0, 0.0], dtype=dtype.as_numpy_dtype)
+        accum1_np = np.array([0.0, 0.0], dtype=dtype.as_numpy_dtype)
+        grads = []
+        for t in range(1, 5):
+          grads.append(var0_np * 10)
+          var0_np, accum0_np = self._update_nesterov_momentum_numpy(var0_np,
+              accum0_np, var0_np * 10, 2.0, 0.9)
+          var1_np, accum1_np = self._update_nesterov_momentum_numpy(var1_np,
+              accum1_np, 3, 2.0, 0.9)
+        var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
+        var1_np = np.array([3.0, 4.0], dtype=dtype.as_numpy_dtype)
+        accum0_np = np.array([0.0, 0.0], dtype=dtype.as_numpy_dtype)
+        accum1_np = np.array([0.0, 0.0], dtype=dtype.as_numpy_dtype)
+        var0 = tf.Variable(var0_np)
+        var1 = tf.Variable(var1_np)
+        loss = 5 * var0 * var0 + 3 * var1
+        mom_op = tf.train.MomentumOptimizer(learning_rate=2.0, momentum=0.9,
+            use_nesterov=True)
+        x_feed = tf.placeholder(dtype)
+        y_feed = tf.IndexedSlices(x_feed,tf.constant([0, 1]),tf.constant([2]))
+        grads_and_vars = [(y_feed, var0),
+            (tf.constant([3.0,3.0],dtype=dtype), var1)]
+        opt_update = mom_op.apply_gradients(grads_and_vars)
+        tf.initialize_all_variables().run()
+        for t in range(1, 5):
+          opt_update.run(feed_dict = {x_feed:grads[t - 1]})
+          var0_np, accum0_np = self._update_nesterov_momentum_numpy(var0_np,
+              accum0_np, var0_np * 10, 2.0, 0.9)
+          var1_np, accum1_np = self._update_nesterov_momentum_numpy(var1_np,
+              accum1_np, 3, 2.0, 0.9)
+          self.assertAllClose(var0_np, var0.eval())
+          self.assertAllClose(var1_np, var1.eval())
 
   def testTensorLearningRateAndMomentum(self):
-    with self.test_session():
-      var0 = tf.Variable([1.0, 2.0])
-      var1 = tf.Variable([3.0, 4.0])
-      grads0 = tf.constant([0.1, 0.1])
-      grads1 = tf.constant([0.01, 0.01])
-      mom_opt = tf.train.MomentumOptimizer(
-          learning_rate=tf.constant(2.0), momentum=tf.constant(0.9))
-      mom_update = mom_opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-      tf.initialize_all_variables().run()
-      # Check we have slots
-      self.assertEqual(["momentum"], mom_opt.get_slot_names())
-      slot0 = mom_opt.get_slot(var0, "momentum")
-      self.assertEquals(slot0.get_shape(), var0.get_shape())
-      self.assertFalse(slot0 in tf.trainable_variables())
-      slot1 = mom_opt.get_slot(var1, "momentum")
-      self.assertEquals(slot1.get_shape(), var1.get_shape())
-      self.assertFalse(slot1 in tf.trainable_variables())
+    for dtype in [tf.half, tf.float32, tf.float64]:
+      with self.test_session():
+        var0 = tf.Variable([1.0, 2.0], dtype=dtype)
+        var1 = tf.Variable([3.0, 4.0], dtype=dtype)
+        grads0 = tf.constant([0.1, 0.1], dtype=dtype)
+        grads1 = tf.constant([0.01, 0.01], dtype=dtype)
+        mom_opt = tf.train.MomentumOptimizer(
+            learning_rate=tf.constant(2.0), momentum=tf.constant(0.9))
+        mom_update = mom_opt.apply_gradients(
+            zip([grads0, grads1], [var0, var1]))
+        tf.initialize_all_variables().run()
+        # Check we have slots
+        self.assertEqual(["momentum"], mom_opt.get_slot_names())
+        slot0 = mom_opt.get_slot(var0, "momentum")
+        self.assertEquals(slot0.get_shape(), var0.get_shape())
+        self.assertFalse(slot0 in tf.trainable_variables())
+        slot1 = mom_opt.get_slot(var1, "momentum")
+        self.assertEquals(slot1.get_shape(), var1.get_shape())
+        self.assertFalse(slot1 in tf.trainable_variables())
 
-      # Fetch params to validate initial values
-      self.assertAllClose([1.0, 2.0], var0.eval())
-      self.assertAllClose([3.0, 4.0], var1.eval())
-      # Step 1: the momentum accumulators where 0. So we should see a normal
-      # update: v -= grad * learning_rate
-      mom_update.run()
-      # Check that the momentum accumulators have been updated.
-      self.assertAllClose(np.array([0.1, 0.1]), slot0.eval())
-      self.assertAllClose(np.array([0.01, 0.01]), slot1.eval())
-      # Check that the parameters have been updated.
-      self.assertAllClose(np.array([1.0 - (0.1 * 2.0),
-                                    2.0 - (0.1 * 2.0)]),
-                          var0.eval())
-      self.assertAllClose(np.array([3.0 - (0.01 * 2.0),
-                                    4.0 - (0.01 * 2.0)]),
-                          var1.eval())
-      # Step 2: the momentum accumulators contain the previous update.
-      mom_update.run()
-      # Check that the momentum accumulators have been updated.
-      self.assertAllClose(np.array([(0.9 * 0.1 + 0.1), (0.9 * 0.1 + 0.1)]),
-                          slot0.eval())
-      self.assertAllClose(np.array([(0.9 * 0.01 + 0.01), (0.9 * 0.01 + 0.01)]),
-                          slot1.eval())
-      # Check that the parameters have been updated.
-      self.assertAllClose(
-          np.array([1.0 - (0.1 * 2.0) - ((0.9 * 0.1 + 0.1) * 2.0),
-                    2.0 - (0.1 * 2.0) - ((0.9 * 0.1 + 0.1) * 2.0)]),
-          var0.eval())
-      self.assertAllClose(np.array([2.98 - ((0.9 * 0.01 + 0.01) * 2.0),
-                                    3.98 - ((0.9 * 0.01 + 0.01) * 2.0)]),
-                          var1.eval())
-
-  def testFloat64(self):
-    with self.test_session():
-      opt = tf.train.MomentumOptimizer(learning_rate=2.0, momentum=0.9)
-
-      # compute_gradients.
-      values = [1.0, 3.0]
-      good_vars = [tf.Variable([v]) for v in values]
-      bad_loss = tf.constant(2.0, tf.float64, name="bad_loss")
-      self.assertRaisesRegexp(
-          ValueError, r"Invalid type.*float64.*bad_loss.*expected.*float32",
-          opt.compute_gradients, bad_loss, good_vars)
-      bad_vars = [
-          tf.Variable(np.array([v], np.float64), name="bad_var")
-          for v in values]
-      self.assertRaisesRegexp(
-          ValueError, r"Invalid type.*float64.*bad_var.*expected.*float32",
-          opt.compute_gradients, tf.cast(bad_vars[0] + bad_vars[1], tf.float32),
-          bad_vars)
-      opt.compute_gradients(good_vars[0] + good_vars[1], good_vars)
-
-      # apply_gradients.
-      bad_grads = [
-          tf.constant([0.1], dtype=np.float64, name="bad_grad"),
-          tf.constant([0.01])]
-      self.assertRaisesRegexp(
-          ValueError, r"Invalid type.*float64.*bad_grad.*expected.*float32",
-          opt.apply_gradients, zip(bad_grads, good_vars))
-      good_grads = [tf.constant([0.01]), tf.constant([0.02])]
-      self.assertRaisesRegexp(
-          ValueError, r"Invalid type.*float64.*bad_var.*expected.*float32",
-          opt.apply_gradients, zip(good_grads, bad_vars))
-      opt.apply_gradients(zip(good_grads, good_vars))
+        # Fetch params to validate initial values
+        self.assertAllClose([1.0, 2.0], var0.eval())
+        self.assertAllClose([3.0, 4.0], var1.eval())
+        # Step 1: the momentum accumulators where 0. So we should see a normal
+        # update: v -= grad * learning_rate
+        mom_update.run()
+        # Check that the momentum accumulators have been updated.
+        self.assertAllCloseAccordingToType(np.array([0.1, 0.1]), slot0.eval())
+        self.assertAllCloseAccordingToType(np.array([0.01, 0.01]), slot1.eval())
+        # Check that the parameters have been updated.
+        self.assertAllCloseAccordingToType(np.array([1.0 - (0.1 * 2.0),
+                                                     2.0 - (0.1 * 2.0)]),
+                                           var0.eval())
+        self.assertAllCloseAccordingToType(np.array([3.0 - (0.01 * 2.0),
+                                                     4.0 - (0.01 * 2.0)]),
+                                           var1.eval())
+        # Step 2: the momentum accumulators contain the previous update.
+        mom_update.run()
+        # Check that the momentum accumulators have been updated.
+        self.assertAllCloseAccordingToType(
+            np.array([(0.9 * 0.1 + 0.1), (0.9 * 0.1 + 0.1)]),
+            slot0.eval())
+        self.assertAllCloseAccordingToType(
+            np.array([(0.9 * 0.01 + 0.01), (0.9 * 0.01 + 0.01)]),
+            slot1.eval())
+        # Check that the parameters have been updated.
+        self.assertAllCloseAccordingToType(
+            np.array([1.0 - (0.1 * 2.0) - ((0.9 * 0.1 + 0.1) * 2.0),
+                      2.0 - (0.1 * 2.0) - ((0.9 * 0.1 + 0.1) * 2.0)]),
+            var0.eval())
+        self.assertAllCloseAccordingToType(
+            np.array([2.98 - ((0.9 * 0.01 + 0.01) * 2.0),
+                      3.98 - ((0.9 * 0.01 + 0.01) * 2.0)]),
+            var1.eval())
 
   def _dbParamsMom01(self):
     """Return dist-belief momentum values.
@@ -212,115 +258,127 @@ class MomentumOptimizerTest(tf.test.TestCase):
         self.assertAllClose(np.array(db_out[i]), var0.eval())
 
   def testSparse(self):
-    with self.test_session():
-      var0 = tf.Variable(tf.zeros([4, 2]))
-      var1 = tf.Variable(
-          tf.constant(1.0, tf.float32, [4, 2]))
-      grads0 = tf.IndexedSlices(tf.constant([[.1, .1]]),
-                                tf.constant([1]),
-                                tf.constant([4, 2]))
-      grads1 = tf.IndexedSlices(tf.constant([[.01, .01], [.01, .01]]),
-                                tf.constant([2, 3]),
-                                tf.constant([4, 2]))
-      mom_opt = tf.train.MomentumOptimizer(learning_rate=2.0, momentum=0.9)
-      mom_update = mom_opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-      tf.initialize_all_variables().run()
+    for dtype in [tf.half, tf.float32, tf.float64]:
+      with self.test_session():
+        var0 = tf.Variable(tf.zeros([4, 2], dtype=dtype))
+        var1 = tf.Variable(tf.constant(1.0, dtype, [4, 2]))
+        grads0 = tf.IndexedSlices(tf.constant([[.1, .1]], dtype=dtype),
+                                  tf.constant([1]),
+                                  tf.constant([4, 2]))
+        grads1 = tf.IndexedSlices(tf.constant([[.01, .01], [.01, .01]],
+                                              dtype=dtype),
+                                  tf.constant([2, 3]),
+                                  tf.constant([4, 2]))
+        mom_opt = tf.train.MomentumOptimizer(learning_rate=2.0, momentum=0.9)
+        mom_update = mom_opt.apply_gradients(
+            zip([grads0, grads1], [var0, var1]))
+        tf.initialize_all_variables().run()
 
-      # Check we have slots
-      self.assertEqual(["momentum"], mom_opt.get_slot_names())
-      slot0 = mom_opt.get_slot(var0, "momentum")
-      self.assertEquals(slot0.get_shape(), var0.get_shape())
-      slot1 = mom_opt.get_slot(var1, "momentum")
-      self.assertEquals(slot1.get_shape(), var1.get_shape())
+        # Check we have slots
+        self.assertEqual(["momentum"], mom_opt.get_slot_names())
+        slot0 = mom_opt.get_slot(var0, "momentum")
+        self.assertEquals(slot0.get_shape(), var0.get_shape())
+        slot1 = mom_opt.get_slot(var1, "momentum")
+        self.assertEquals(slot1.get_shape(), var1.get_shape())
 
-      # Fetch params to validate initial values
-      self.assertAllClose([0, 0], var0.eval()[0])
-      self.assertAllClose([0, 0], var0.eval()[1])
-      self.assertAllClose([1, 1], var1.eval()[2])
+        # Fetch params to validate initial values
+        self.assertAllClose([0, 0], var0.eval()[0])
+        self.assertAllClose([0, 0], var0.eval()[1])
+        self.assertAllClose([1, 1], var1.eval()[2])
 
-      # Step 1: the momentum accumulators are 0. So we should see a normal
-      # update: v -= grad * learning_rate
-      mom_update.run()
-      # Check that the momentum accumulators have been updated.
-      self.assertAllClose(np.array([0, 0]), slot0.eval()[0])
-      self.assertAllClose(np.array([.1, .1]), slot0.eval()[1])
-      self.assertAllClose(np.array([.01, .01]), slot1.eval()[2])
-      # Check that the parameters have been updated.
-      self.assertAllClose(np.array([0, 0]), var0.eval()[0])
-      self.assertAllClose(np.array([- (0.1 * 2.0),
-                                    - (0.1 * 2.0)]),
-                          var0.eval()[1])
-      self.assertAllClose(np.array([1.0 - (0.01 * 2.0),
-                                    1.0 - (0.01 * 2.0)]),
-                          var1.eval()[2])
-      # Step 2: the momentum accumulators contain the previous update.
-      mom_update.run()
-      # Check that the momentum accumulators have been updated.
-      self.assertAllClose(np.array([0, 0]), slot0.eval()[0])
-      self.assertAllClose(np.array([(0.9 * 0.1 + 0.1),
-                                    (0.9 * 0.1 + 0.1)]),
-                          slot0.eval()[1])
-      self.assertAllClose(np.array([(0.9 * 0.01 + 0.01),
-                                    (0.9 * 0.01 + 0.01)]),
-                          slot1.eval()[2])
-      # Check that the parameters have been updated.
-      self.assertAllClose(np.array([0, 0]), var0.eval()[0])
-      self.assertAllClose(
-          np.array([- (0.1 * 2.0) - ((0.9 * 0.1 + 0.1) * 2.0),
-                    - (0.1 * 2.0) - ((0.9 * 0.1 + 0.1) * 2.0)]),
-          var0.eval()[1])
-      self.assertAllClose(np.array([0.98 - ((0.9 * 0.01 + 0.01) * 2.0),
-                                    0.98 - ((0.9 * 0.01 + 0.01) * 2.0)]),
-                          var1.eval()[2])
+        # Step 1: the momentum accumulators are 0. So we should see a normal
+        # update: v -= grad * learning_rate
+        mom_update.run()
+        # Check that the momentum accumulators have been updated.
+        self.assertAllCloseAccordingToType(
+            np.array([0, 0]), slot0.eval()[0])
+        self.assertAllCloseAccordingToType(
+            np.array([.1, .1]), slot0.eval()[1])
+        self.assertAllCloseAccordingToType(
+            np.array([.01, .01]), slot1.eval()[2])
+        # Check that the parameters have been updated.
+        self.assertAllCloseAccordingToType(np.array([0, 0]), var0.eval()[0])
+        self.assertAllCloseAccordingToType(np.array([- (0.1 * 2.0),
+                                                     - (0.1 * 2.0)]),
+                                           var0.eval()[1])
+        self.assertAllCloseAccordingToType(np.array([1.0 - (0.01 * 2.0),
+                                                     1.0 - (0.01 * 2.0)]),
+                                           var1.eval()[2])
+        # Step 2: the momentum accumulators contain the previous update.
+        mom_update.run()
+        # Check that the momentum accumulators have been updated.
+        self.assertAllClose(np.array([0, 0]), slot0.eval()[0])
+        self.assertAllCloseAccordingToType(np.array([(0.9 * 0.1 + 0.1),
+                                                     (0.9 * 0.1 + 0.1)]),
+                                           slot0.eval()[1])
+        self.assertAllCloseAccordingToType(np.array([(0.9 * 0.01 + 0.01),
+                                                     (0.9 * 0.01 + 0.01)]),
+                                           slot1.eval()[2])
+        # Check that the parameters have been updated.
+        self.assertAllClose(np.array([0, 0]), var0.eval()[0])
+        self.assertAllCloseAccordingToType(
+            np.array([- (0.1 * 2.0) - ((0.9 * 0.1 + 0.1) * 2.0),
+                      - (0.1 * 2.0) - ((0.9 * 0.1 + 0.1) * 2.0)]),
+            var0.eval()[1])
+        self.assertAllCloseAccordingToType(
+            np.array([0.98 - ((0.9 * 0.01 + 0.01) * 2.0),
+                      0.98 - ((0.9 * 0.01 + 0.01) * 2.0)]),
+            var1.eval()[2])
 
   def testSharing(self):
-    with self.test_session():
-      var0 = tf.Variable([1.0, 2.0])
-      var1 = tf.Variable([3.0, 4.0])
-      grads0 = tf.constant([0.1, 0.1])
-      grads1 = tf.constant([0.01, 0.01])
-      mom_opt = tf.train.MomentumOptimizer(learning_rate=2.0, momentum=0.9)
-      mom_update1 = mom_opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-      mom_update2 = mom_opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-      tf.initialize_all_variables().run()
+    for dtype in [tf.half, tf.float32, tf.float64]:
+      with self.test_session():
+        var0 = tf.Variable([1.0, 2.0], dtype=dtype)
+        var1 = tf.Variable([3.0, 4.0], dtype=dtype)
+        grads0 = tf.constant([0.1, 0.1], dtype=dtype)
+        grads1 = tf.constant([0.01, 0.01], dtype=dtype)
+        mom_opt = tf.train.MomentumOptimizer(learning_rate=2.0, momentum=0.9)
+        mom_update1 = mom_opt.apply_gradients(
+            zip([grads0, grads1], [var0, var1]))
+        mom_update2 = mom_opt.apply_gradients(
+            zip([grads0, grads1], [var0, var1]))
+        tf.initialize_all_variables().run()
 
-      self.assertEqual(["momentum"], mom_opt.get_slot_names())
-      slot0 = mom_opt.get_slot(var0, "momentum")
-      self.assertEquals(slot0.get_shape(), var0.get_shape())
-      slot1 = mom_opt.get_slot(var1, "momentum")
-      self.assertEquals(slot1.get_shape(), var1.get_shape())
+        self.assertEqual(["momentum"], mom_opt.get_slot_names())
+        slot0 = mom_opt.get_slot(var0, "momentum")
+        self.assertEquals(slot0.get_shape(), var0.get_shape())
+        slot1 = mom_opt.get_slot(var1, "momentum")
+        self.assertEquals(slot1.get_shape(), var1.get_shape())
 
-      # Fetch params to validate initial values
-      self.assertAllClose([1.0, 2.0], var0.eval())
-      self.assertAllClose([3.0, 4.0], var1.eval())
-      # Step 1: the momentum accumulators where 0. So we should see a normal
-      # update: v -= grad * learning_rate
-      mom_update1.run()
-      # Check that the momentum accumulators have been updated.
-      self.assertAllClose(np.array([0.1, 0.1]), slot0.eval())
-      self.assertAllClose(np.array([0.01, 0.01]), slot1.eval())
-      # Check that the parameters have been updated.
-      self.assertAllClose(np.array([1.0 - (0.1 * 2.0),
-                                    2.0 - (0.1 * 2.0)]),
-                          var0.eval())
-      self.assertAllClose(np.array([3.0 - (0.01 * 2.0),
-                                    4.0 - (0.01 * 2.0)]),
-                          var1.eval())
-      # Step 2: the second momentum accumulators contain the previous update.
-      mom_update2.run()
-      # Check that the momentum accumulators have been updated.
-      self.assertAllClose(np.array([(0.9 * 0.1 + 0.1), (0.9 * 0.1 + 0.1)]),
-                          slot0.eval())
-      self.assertAllClose(np.array([(0.9 * 0.01 + 0.01), (0.9 * 0.01 + 0.01)]),
-                          slot1.eval())
-      # Check that the parameters have been updated.
-      self.assertAllClose(
-          np.array([1.0 - (0.1 * 2.0) - ((0.9 * 0.1 + 0.1) * 2.0),
-                    2.0 - (0.1 * 2.0) - ((0.9 * 0.1 + 0.1) * 2.0)]),
-          var0.eval())
-      self.assertAllClose(np.array([2.98 - ((0.9 * 0.01 + 0.01) * 2.0),
-                                    3.98 - ((0.9 * 0.01 + 0.01) * 2.0)]),
-                          var1.eval())
+        # Fetch params to validate initial values
+        self.assertAllClose([1.0, 2.0], var0.eval())
+        self.assertAllClose([3.0, 4.0], var1.eval())
+        # Step 1: the momentum accumulators where 0. So we should see a normal
+        # update: v -= grad * learning_rate
+        mom_update1.run()
+        # Check that the momentum accumulators have been updated.
+        self.assertAllCloseAccordingToType(np.array([0.1, 0.1]), slot0.eval())
+        self.assertAllCloseAccordingToType(np.array([0.01, 0.01]), slot1.eval())
+        # Check that the parameters have been updated.
+        self.assertAllCloseAccordingToType(np.array([1.0 - (0.1 * 2.0),
+                                                     2.0 - (0.1 * 2.0)]),
+                                           var0.eval())
+        self.assertAllCloseAccordingToType(np.array([3.0 - (0.01 * 2.0),
+                                                     4.0 - (0.01 * 2.0)]),
+                                           var1.eval())
+        # Step 2: the second momentum accumulators contain the previous update.
+        mom_update2.run()
+        # Check that the momentum accumulators have been updated.
+        self.assertAllCloseAccordingToType(
+            np.array([(0.9 * 0.1 + 0.1), (0.9 * 0.1 + 0.1)]),
+            slot0.eval())
+        self.assertAllCloseAccordingToType(
+            np.array([(0.9 * 0.01 + 0.01), (0.9 * 0.01 + 0.01)]),
+            slot1.eval())
+        # Check that the parameters have been updated.
+        self.assertAllCloseAccordingToType(
+            np.array([1.0 - (0.1 * 2.0) - ((0.9 * 0.1 + 0.1) * 2.0),
+                      2.0 - (0.1 * 2.0) - ((0.9 * 0.1 + 0.1) * 2.0)]),
+            var0.eval())
+        self.assertAllCloseAccordingToType(
+            np.array([2.98 - ((0.9 * 0.01 + 0.01) * 2.0),
+                      3.98 - ((0.9 * 0.01 + 0.01) * 2.0)]),
+            var1.eval())
 
 
 if __name__ == "__main__":

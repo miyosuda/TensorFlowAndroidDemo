@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ import collections
 import os.path
 import re
 import time
+import uuid
 
 import numpy as np
 import six
@@ -34,48 +35,37 @@ from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import op_def_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saver_pb2
-from tensorflow.python.client import graph_util
 from tensorflow.python.client import session
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as pydev
+from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_io_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
-from tensorflow.python.platform import gfile
-from tensorflow.python.platform import logging
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import training_util
 from tensorflow.python.training.checkpoint_state_pb2 import CheckpointState
 from tensorflow.python.util import compat
 
 
-def stripped_op_list_for_graph(graph_def):
-  """Collect the ops used by a graph.
+def ops_used_by_graph_def(graph_def):
+  """Collect the list of ops used by a graph.
 
-  This function computes the `stripped_op_list` field of `MetaGraphDef` and
-  similar protos.  The result can be communicated from the producer to the
-  consumer, which can then use the C++ function
-  `RemoveNewDefaultAttrsFromGraphDef` to improve forwards compatibility.
+  Does not validate that the ops are all registered.
 
   Args:
     graph_def: A `GraphDef` proto, as from `graph.as_graph_def()`.
 
   Returns:
-    An `OpList` of ops used by the graph.
-
-  Raises:
-    ValueError: If an unregistered op is used.
+    A list of strings, each naming an op used by the graph.
   """
-  # This is the Python equivalent of StrippedOpListForGraph in C++.
-  # Unfortunately, since the Python op registry can differ from that in C++, we
-  # can't remove the duplication using swig (at least naively).
-  # TODO(irving): Support taking graphs directly.
-
   # Map function names to definitions
   name_to_function = {}
   for fun in graph_def.library.function:
@@ -96,14 +86,40 @@ def stripped_op_list_for_graph(graph_def):
     for node in fun.node:
       mark_op_as_used(node.op)
 
+  return [op for op in used_ops if op not in name_to_function]
+
+
+def stripped_op_list_for_graph(graph_def):
+  """Collect the stripped OpDefs for ops used by a graph.
+
+  This function computes the `stripped_op_list` field of `MetaGraphDef` and
+  similar protos.  The result can be communicated from the producer to the
+  consumer, which can then use the C++ function
+  `RemoveNewDefaultAttrsFromGraphDef` to improve forwards compatibility.
+
+  Args:
+    graph_def: A `GraphDef` proto, as from `graph.as_graph_def()`.
+
+  Returns:
+    An `OpList` of ops used by the graph.
+
+  Raises:
+    ValueError: If an unregistered op is used.
+  """
+  # This is the Python equivalent of StrippedOpListForGraph in C++.
+  # Unfortunately, since the Python op registry can differ from that in C++, we
+  # can't remove the duplication using swig (at least naively).
+  # TODO(irving): Support taking graphs directly.
+
+  used_ops = ops_used_by_graph_def(graph_def)
+
   # Verify that all used ops are registered.
   registered_ops = op_def_registry.get_registered_ops()
   # These internal ops used by functions are not registered, so we need to
   # whitelist them.  # TODO(irving): Do something better here.
   op_whitelist = ("_Arg", "_Retval", "_ListToArray", "_ArrayToList")
   for op in used_ops:
-    if (op not in name_to_function and op not in registered_ops and
-        op not in op_whitelist):
+    if op not in registered_ops and op not in op_whitelist:
       raise ValueError("Op %s is used by the graph, but is not registered" % op)
 
   # Build the stripped op list in sorted order
@@ -260,19 +276,17 @@ class BaseSaverBuilder(object):
             shape = array_ops.shape(v)
           values = array_ops.reshape(values, shape)
 
-      # Assign on the same device as the variable.
       validate_shape = not reshape and v.get_shape().is_fully_defined()
-      with ops.colocate_with(v):
-        assign_ops.append(state_ops.assign(v,
-                                           values,
-                                           validate_shape=validate_shape))
+      assign_ops.append(state_ops.assign(v,
+                                         values,
+                                         validate_shape=validate_shape))
 
     # Create a Noop that has control dependencies from all the updates.
     return control_flow_ops.group(*assign_ops, name=name)
 
   def _AddShardedRestoreOps(self, filename_tensor, per_device,
                             restore_sequentially, reshape):
-    """Add Ops to save variables from multiple devices.
+    """Add Ops to restore variables from multiple devices.
 
     Args:
       filename_tensor: Tensor for the path of the file to load.
@@ -448,7 +462,8 @@ class BaseSaverBuilder(object):
             max_to_keep=5,
             keep_checkpoint_every_n_hours=10000.0,
             name=None,
-            restore_sequentially=False):
+            restore_sequentially=False,
+            filename="model"):
     """Adds save/restore nodes to the graph and creates a SaverDef proto.
 
     Args:
@@ -472,6 +487,8 @@ class BaseSaverBuilder(object):
       name: String.  Optional name to use as a prefix when adding operations.
       restore_sequentially: A Bool, which if true, causes restore of different
         variables to happen sequentially within each device.
+      filename: If known at graph construction time, filename used for variable
+        loading/saving.
 
     Returns:
       A SaverDef proto.
@@ -488,7 +505,7 @@ class BaseSaverBuilder(object):
 
     with ops.op_scope([vs.var for vs in vars_to_save], name, "save") as name:
       # Add the Constant string tensor for the filename.
-      filename_tensor = constant_op.constant("model")
+      filename_tensor = constant_op.constant(filename)
 
       # Add the save ops.
       if sharded:
@@ -605,9 +622,14 @@ def update_checkpoint_state(save_dir,
     raise RuntimeError("Save path '%s' conflicts with path used for "
                        "checkpoint state.  Please use a different save path." %
                        model_checkpoint_path)
-  f = gfile.FastGFile(coord_checkpoint_filename, mode="w")
-  f.write(text_format.MessageToString(ckpt))
-  f.close()
+
+  # Saves to a tmp file first.  On success, *atomically* renames it back.
+  # This prevents a potential read/write race between this function and
+  # get_checkpoint_state().
+  temp_pathname = coord_checkpoint_filename + ".tmp." + uuid.uuid4().hex
+  file_io.write_string_to_file(temp_pathname,
+                               text_format.MessageToString(ckpt))
+  file_io.rename(temp_pathname, coord_checkpoint_filename, overwrite=True)
 
 
 def get_checkpoint_state(checkpoint_dir, latest_filename=None):
@@ -624,6 +646,9 @@ def get_checkpoint_state(checkpoint_dir, latest_filename=None):
   Returns:
     A CheckpointState if the state was available, None
     otherwise.
+
+  Raises:
+    ValueError: if the checkpoint read doesn't have model_checkpoint_path set.
   """
   ckpt = None
   coord_checkpoint_filename = _GetCheckpointFilename(
@@ -632,22 +657,26 @@ def get_checkpoint_state(checkpoint_dir, latest_filename=None):
   try:
     # Check that the file exists before opening it to avoid
     # many lines of errors from colossus in the logs.
-    if gfile.Exists(coord_checkpoint_filename):
-      f = gfile.FastGFile(coord_checkpoint_filename, mode="r")
+    if file_io.file_exists(coord_checkpoint_filename):
+      file_content = file_io.read_file_to_string(
+          coord_checkpoint_filename).decode("utf-8")
       ckpt = CheckpointState()
-      text_format.Merge(f.read(), ckpt)
+      text_format.Merge(file_content, ckpt)
+      if not ckpt.model_checkpoint_path:
+        raise ValueError("Invalid checkpoint state loaded from %s", checkpoint_dir)
       # For relative model_checkpoint_path and all_model_checkpoint_paths,
       # prepend checkpoint_dir.
-      if not os.path.isabs(checkpoint_dir):
-        if not os.path.isabs(ckpt.model_checkpoint_path):
-          ckpt.model_checkpoint_path = os.path.join(checkpoint_dir,
+      if not os.path.isabs(ckpt.model_checkpoint_path):
+        ckpt.model_checkpoint_path = os.path.join(checkpoint_dir,
                                                     ckpt.model_checkpoint_path)
-        for i in range(len(ckpt.all_model_checkpoint_paths)):
-          p = ckpt.all_model_checkpoint_paths[i]
-          if not os.path.isabs(p):
-            ckpt.all_model_checkpoint_paths[i] = os.path.join(checkpoint_dir, p)
-  except IOError:
+      for i in range(len(ckpt.all_model_checkpoint_paths)):
+        p = ckpt.all_model_checkpoint_paths[i]
+        if not os.path.isabs(p):
+          ckpt.all_model_checkpoint_paths[i] = os.path.join(checkpoint_dir, p)
+  except IOError as e:
     # It's ok if the file cannot be read
+    logging.warning(str(e))
+    logging.warning("%s: Checkpoint ignored", coord_checkpoint_filename)
     return None
   except text_format.ParseError as e:
     logging.warning(str(e))
@@ -908,14 +937,15 @@ class Saver(object):
             self.saver_def.keep_checkpoint_every_n_hours * 3600)
         return
       # Otherwise delete the files.
-      for f in gfile.Glob(self._CheckpointFilename(p)):
+      for f in file_io.get_matching_files(
+          self._CheckpointFilename(p)):
         try:
-          gfile.Remove(f)
+          file_io.delete_file(f)
           meta_graph_filename = self._MetaGraphFilename(
               f, meta_graph_suffix=meta_graph_suffix)
-          if gfile.Exists(meta_graph_filename):
-            gfile.Remove(meta_graph_filename)
-        except OSError as e:
+          if file_io.file_exists(meta_graph_filename):
+            file_io.delete_file(meta_graph_filename)
+        except Exception as e:  # pylint: disable=broad-except
           logging.warning("Ignoring: %s", str(e))
 
   def as_saver_def(self):
@@ -1014,7 +1044,8 @@ class Saver(object):
 
     Raises:
       TypeError: If `sess` is not a `Session`.
-      ValueError: If `latest_filename` contains path components.
+      ValueError: If `latest_filename` contains path components, or if it
+        collides with `save_path`.
     """
     if latest_filename is None:
       latest_filename = "checkpoint"
@@ -1028,6 +1059,13 @@ class Saver(object):
       checkpoint_file = "%s-%d" % (save_path, global_step)
     else:
       checkpoint_file = save_path
+      if os.path.basename(
+          save_path) == latest_filename and not self.saver_def.sharded:
+        # Guard against collision between data file and checkpoint state file.
+        raise ValueError(
+            "'latest_filename' collides with 'save_path': '%s' and '%s'" %
+            (latest_filename, save_path))
+
     save_path = os.path.dirname(save_path)
     if not isinstance(sess, session.SessionInterface):
       raise TypeError("'sess' must be a Session; %s" % sess)
@@ -1061,7 +1099,8 @@ class Saver(object):
       A `MetaGraphDef` proto.
     """
     return export_meta_graph(filename=filename,
-                             graph_def=ops.get_default_graph().as_graph_def(),
+                             graph_def=ops.get_default_graph().as_graph_def(
+                                 add_shapes=True),
                              saver_def=self.saver_def,
                              collection_list=collection_list,
                              as_text=as_text)
@@ -1084,7 +1123,7 @@ class Saver(object):
     Raises:
       ValueError: If the given `save_path` does not point to a file.
     """
-    if not gfile.Glob(save_path):
+    if not file_io.get_matching_files(save_path):
       raise ValueError("Restore called with invalid save path %s" % save_path)
     sess.run(self.saver_def.restore_op_name,
              {self.saver_def.filename_tensor_name: save_path})
@@ -1115,8 +1154,11 @@ def latest_checkpoint(checkpoint_dir, latest_filename=None):
   # Pick the latest checkpoint based on checkpoint state.
   ckpt = get_checkpoint_state(checkpoint_dir, latest_filename)
   if ckpt and ckpt.model_checkpoint_path:
-    if gfile.Glob(ckpt.model_checkpoint_path):
+    if file_io.get_matching_files(ckpt.model_checkpoint_path):
       return ckpt.model_checkpoint_path
+    else:
+      logging.error("Couldn't match files for pattern %s",
+                    ckpt.model_checkpoint_path)
 
   return None
 
@@ -1152,7 +1194,7 @@ def _add_collection_def(meta_graph_def, key):
   """
   if not isinstance(key, six.string_types) and not isinstance(key, bytes):
     logging.warning("Only collections with string type keys will be "
-                    "serialized. This key has %s" % type(key))
+                    "serialized. This key has %s", type(key))
     return
   collection_list = ops.get_collection(key)
   if not collection_list:
@@ -1183,7 +1225,7 @@ def _add_collection_def(meta_graph_def, key):
   except Exception as e:  # pylint: disable=broad-except
     logging.warning("Error encountered when serializing %s.\n"
                     "Type is unsupported, or the types of the items don't "
-                    "match field type in CollectionDef.\n%s" % (key, str(e)))
+                    "match field type in CollectionDef.\n%s", key, str(e))
     if key in meta_graph_def.collection_def:
       del meta_graph_def.collection_def[key]
     return
@@ -1225,7 +1267,8 @@ def _as_meta_graph_def(meta_info_def=None, graph_def=None, saver_def=None,
 
   # Adds graph_def or the default.
   if not graph_def:
-    meta_graph_def.graph_def.MergeFrom(ops.get_default_graph().as_graph_def())
+    meta_graph_def.graph_def.MergeFrom(
+        ops.get_default_graph().as_graph_def(add_shapes=True))
   else:
     meta_graph_def.graph_def.MergeFrom(graph_def)
 
@@ -1263,27 +1306,23 @@ def read_meta_graph_file(filename):
     IOError: If the file doesn't exist, or cannot be successfully parsed.
   """
   meta_graph_def = meta_graph_pb2.MetaGraphDef()
-  if not gfile.Exists(filename):
+  if not file_io.file_exists(filename):
     raise IOError("File %s does not exist." % filename)
   # First try to read it as a binary file.
-  with gfile.FastGFile(filename, "rb") as f:
-    file_content = f.read()
-    try:
-      meta_graph_def.ParseFromString(file_content)
-      return meta_graph_def
-    except Exception:  # pylint: disable=broad-except
-      pass
+  file_content = file_io.read_file_to_string(filename)
+  try:
+    meta_graph_def.ParseFromString(file_content)
+    return meta_graph_def
+  except Exception:  # pylint: disable=broad-except
+    pass
 
   # Next try to read it as a text file.
-  with gfile.FastGFile(filename, "r") as f:
-    file_content = f.read()
-    try:
-      text_format.Merge(file_content, meta_graph_def)
-      return meta_graph_def
-    except text_format.ParseError as e:
-      raise IOError("Cannot parse file %s: %s." % (filename, str(e)))
+  try:
+    text_format.Merge(file_content.decode("utf-8"), meta_graph_def)
+  except text_format.ParseError as e:
+    raise IOError("Cannot parse file %s: %s." % (filename, str(e)))
 
-  return None
+  return meta_graph_def
 
 
 def _import_meta_graph_def(meta_graph_def):
@@ -1302,14 +1341,18 @@ def _import_meta_graph_def(meta_graph_def):
     (i.e., no variables to restore).
   """
   # Gathers the list of nodes we are interested in.
-  importer.import_graph_def(meta_graph_def.graph_def, name="")
+  producer_op_list = None
+  if meta_graph_def.meta_info_def.HasField("stripped_op_list"):
+    producer_op_list = meta_graph_def.meta_info_def.stripped_op_list
+  importer.import_graph_def(meta_graph_def.graph_def, name="",
+                            producer_op_list=producer_op_list)
 
   # Restores all the other collections.
   for key, col_def in meta_graph_def.collection_def.items():
     kind = col_def.WhichOneof("kind")
     if kind is None:
-      logging.error("Cannot identify data type for collection %s. Skipping."
-                    % key)
+      logging.error("Cannot identify data type for collection %s. Skipping.",
+                    key)
       continue
     from_proto = ops.get_from_proto_function(key)
     if from_proto:

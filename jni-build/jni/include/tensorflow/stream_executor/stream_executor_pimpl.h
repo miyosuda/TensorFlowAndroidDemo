@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -337,6 +337,18 @@ class StreamExecutor {
   // Returns whether the StreamExecutor support neural net routines for the
   // platform that underlies this interface.
   bool SupportsDnn() const;
+
+  // Get the list of supported algorithms for the forward convolution opeartion.
+  bool GetConvolveAlgorithms(std::vector<dnn::AlgorithmType> *out_algorithms);
+
+  // Get the list of supported algorithms for the backward convolution on data.
+  bool GetConvolveBackwardDataAlgorithms(
+      std::vector<dnn::AlgorithmType> *out_algorithms);
+
+  // Get the list of supported algorithms for the backward convolution on the
+  // filter.
+  bool GetConvolveBackwardFilterAlgorithms(
+      std::vector<dnn::AlgorithmType> *out_algorithms);
 
   // Returns the device ordinal that this StreamExecutor was initialized with.
   // Meaningless before initialization.

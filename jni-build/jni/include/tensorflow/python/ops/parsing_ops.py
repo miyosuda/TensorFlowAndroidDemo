@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,11 +21,11 @@ from __future__ import print_function
 import collections
 import re
 
+from tensorflow.python.framework import common_shapes
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import common_shapes
-from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_parsing_ops
 from tensorflow.python.ops import logging_ops
@@ -225,7 +225,7 @@ def parse_example(serialized, features, name=None, example_names=None):
   features: {
       "kw": VarLenFeature(tf.string),
       "dank": VarLenFeature(tf.int64),
-      "gps": VarLenFeature(tf.float),
+      "gps": VarLenFeature(tf.float32),
   }
   ```
 
@@ -297,9 +297,8 @@ def parse_example(serialized, features, name=None, example_names=None):
   Raises:
     ValueError: if any feature is invalid.
   """
-  # pylint: enable=line-too-long
   if not features:
-    raise ValueError("Missing features.")
+    raise ValueError("Missing: features was %s." % features)
   (sparse_keys, sparse_types, dense_keys, dense_types, dense_defaults,
    dense_shapes) = _features_to_raw_params(
        features, [VarLenFeature, FixedLenFeature])
@@ -526,15 +525,18 @@ def _parse_single_example_raw(serialized,
                                  name=name)
     if dense_keys is not None:
       for d in dense_keys:
-        outputs[d] = array_ops.squeeze(outputs[d], [0], name="Squeeze_%s" % d)
+        d_name = re.sub("[^A-Za-z0-9_.\\-/]", "_", d)
+        outputs[d] = array_ops.squeeze(
+            outputs[d], [0], name="Squeeze_%s" % d_name)
     if sparse_keys is not None:
       for s in sparse_keys:
+        s_name = re.sub("[^A-Za-z0-9_.\\-/]", "_", s)
         outputs[s] = ops.SparseTensor(
             array_ops.slice(outputs[s].indices,
-                            [0, 1], [-1, -1], name="Slice_Indices_%s" % s),
+                            [0, 1], [-1, -1], name="Slice_Indices_%s" % s_name),
             outputs[s].values,
             array_ops.slice(outputs[s].shape,
-                            [1], [-1], name="Squeeze_Shape_%s" % s))
+                            [1], [-1], name="Squeeze_Shape_%s" % s_name))
     return outputs
 
 
@@ -594,6 +596,10 @@ def parse_single_sequence_example(
   `FixedLenSequenceFeature` is mapped to a `Tensor`, each of the specified type.
   The shape will be `(T,) + df.shape` for `FixedLenSequenceFeature` `df`, where
   `T` is the length of the associated `FeatureList` in the `SequenceExample`.
+  For instance, `FixedLenSequenceFeature([])` yields a scalar 1-D `Tensor` of
+  static shape `[None]` and dynamic shape `[T]`, while
+  `FixedLenSequenceFeature([k])` (for `int k >= 1`) yields a 2-D matrix `Tensor`
+  of static shape `[None, k]` and dynamic shape `[T, k]`.
 
   Each `SparseTensor` corresponding to `sequence_features` represents a ragged
   vector.  Its indices are `[time, index]`, where `time` is the `FeatureList`

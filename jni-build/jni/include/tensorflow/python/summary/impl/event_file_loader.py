@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,8 +21,8 @@ from __future__ import print_function
 from tensorflow.core.util import event_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.platform import app
-from tensorflow.python.platform import logging
 from tensorflow.python.platform import resource_loader
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 
 
@@ -35,7 +35,7 @@ class EventFileLoader(object):
     file_path = resource_loader.readahead_file_path(file_path)
     logging.debug('Opening a record reader pointing at %s', file_path)
     self._reader = pywrap_tensorflow.PyRecordReader_New(
-        compat.as_bytes(file_path), 0)
+        compat.as_bytes(file_path), 0, compat.as_bytes(''))
     # Store it for logging purposes.
     self._file_path = file_path
     if not self._reader:

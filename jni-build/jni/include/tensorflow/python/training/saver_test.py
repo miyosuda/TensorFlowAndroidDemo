@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,9 +11,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-# ==============================================================================
+# =============================================================================
 
-"""Tests for tensorflow.ops.io_ops."""
+"""Tests for tensorflow.python.training.saver.py."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -34,10 +34,10 @@ from google.protobuf.any_pb2 import Any
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import queue_runner_pb2
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import function
 from tensorflow.python.platform import gfile
 from tensorflow.python.training import saver as saver_module
-from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.util import compat
 
 
@@ -54,13 +54,16 @@ class SaverTest(tf.test.TestCase):
   def testBasics(self):
     save_path = os.path.join(self.get_temp_dir(), "basics")
 
+    # Build a graph with 2 parameter nodes, and Save and
+    # Restore nodes for them.
+    v0 = tf.Variable(10.0, name="v0")
+    v1 = tf.Variable(20.0, name="v1")
+    save = tf.train.Saver({"v0": v0, "v1": v1}, restore_sequentially=True)
+    init_all_op = tf.initialize_all_variables()
+
     with self.test_session() as sess:
-      # Build a graph with 2 parameter nodes, and Save and
-      # Restore nodes for them.
-      v0 = tf.Variable(10.0, name="v0")
-      v1 = tf.Variable(20.0, name="v1")
-      save = tf.train.Saver({"v0": v0, "v1": v1}, restore_sequentially=True)
-      tf.initialize_all_variables().run()
+      # Initialize all variables
+      sess.run(init_all_op)
 
       # Check that the parameter nodes have been initialized.
       self.assertEqual(10.0, v0.eval())
@@ -228,7 +231,7 @@ class SaverTest(tf.test.TestCase):
     self._SaveAndLoad("var1", 1.1, 2.2, save_path)
 
   def testGPU(self):
-    if not tf.test.is_built_with_cuda():
+    if not tf.test.is_gpu_available():
       return
     save_path = os.path.join(self.get_temp_dir(), "gpu")
     with tf.Session("", graph=tf.Graph()) as sess:
@@ -356,6 +359,73 @@ class SaveRestoreShardedTest(tf.test.TestCase):
       save = tf.train.Saver({"v0": v0}, sharded=True)
       sd = save.as_saver_def()
       self.assertTrue(sd.sharded)
+
+  def testPartitionedVariables(self):
+    var_full_shape = [10, 3]
+    # Allows save/restore mechanism to work w/ different slicings.
+    var_name = "my_var"
+    saved_path = os.path.join(_TestDir("partitioned_variables"), "ckpt")
+
+    def _Save(slices):
+      with self.test_session(graph=tf.Graph()) as sess:
+        # Calls .eval() to return the ndarray that makes up the full variable.
+        rnd = tf.random_uniform(var_full_shape).eval()
+
+        if slices:
+          vs = tf.create_partitioned_variables(var_full_shape,
+                                               slices,
+                                               rnd,
+                                               name=var_name)
+        else:
+          vs = [tf.Variable(rnd, name=var_name)]
+
+        tf.initialize_all_variables().run()
+        saver = tf.train.Saver(vs)
+        actual_path = saver.save(sess, saved_path)
+        self.assertEqual(saved_path, actual_path)
+
+        return rnd
+
+    def _Restore(slices):
+      with self.test_session(graph=tf.Graph()) as sess:
+        if slices:
+          new_vs = tf.create_partitioned_variables(
+              var_full_shape,
+              slices,
+              tf.zeros(var_full_shape),  # != original contents.
+              name=var_name)
+        else:
+          new_vs = [tf.Variable(
+              tf.zeros(shape=var_full_shape),  # != original contents.
+              name=var_name)]
+
+        tf.initialize_all_variables().run()
+        saver = tf.train.Saver(new_vs)
+        saver.restore(sess, saved_path)
+
+        if slices and slices[0] != 1:
+          return tf.concat(0, new_vs).eval()
+        elif slices and slices[1] != 1:
+          return tf.concat(1, new_vs).eval()
+        else:  # Non-sliced.
+          return new_vs[0].eval()
+
+    # Saves 10 horizontal parts of a partitioned variable.
+    # Restores into a full variable, non-sliced.
+    saved_full = _Save(slices=[10, 1])
+    restored_full = _Restore(slices=None)
+    self.assertAllEqual(saved_full, restored_full)
+
+    # Restores into a different number/orientation of slices.
+    restored_full = _Restore(slices=[2, 1])  # 2 horizon parts.
+    self.assertAllEqual(saved_full, restored_full)
+    restored_full = _Restore(slices=[1, 3])  # 3 vertical parts.
+    self.assertAllEqual(saved_full, restored_full)
+
+    # Now, saves a full variable and restores in slices.
+    saved_full = _Save(slices=None)
+    restored_full = _Restore(slices=[1, 3])
+    self.assertAllEqual(saved_full, restored_full)
 
 
 class MaxToKeepTest(tf.test.TestCase):
@@ -525,7 +595,7 @@ class MaxToKeepTest(tf.test.TestCase):
       self.assertEqual([], save2.last_checkpoints)
       self.assertTrue(gfile.Exists(s2))
 
-  def testNoMetaGrap(self):
+  def testNoMetaGraph(self):
     save_dir = _TestDir("no_meta_graph")
 
     with self.test_session() as sess:
@@ -674,6 +744,40 @@ class LatestCheckpointWithRelativePaths(tf.test.TestCase):
     finally:
       shutil.rmtree(tempdir)
 
+  def testNameCollision(self):
+    # Make sure we have a clean directory to work in.
+    with self.tempDir() as tempdir:
+      # Jump to that directory until this test is done.
+      with self.tempWorkingDir(tempdir):
+        # Save training snapshots to a relative path.
+        traindir = "train/"
+        os.mkdir(traindir)
+        # Collides with the default name of the checkpoint state file.
+        filepath = os.path.join(traindir, "checkpoint")
+
+        with self.test_session() as sess:
+          unused_a = tf.Variable(0.0)  # So that Saver saves something.
+          tf.initialize_all_variables().run()
+
+          # Should fail.
+          saver = tf.train.Saver(sharded=False)
+          with self.assertRaisesRegexp(ValueError, "collides with"):
+            saver.save(sess, filepath)
+
+          # Succeeds: the file will be named "checkpoint-<step>".
+          saver.save(sess, filepath, global_step=1)
+          self.assertIsNotNone(tf.train.latest_checkpoint(traindir))
+
+          # Succeeds: the file will be named "checkpoint-<i>-of-<n>".
+          saver = tf.train.Saver(sharded=True)
+          saver.save(sess, filepath)
+          self.assertIsNotNone(tf.train.latest_checkpoint(traindir))
+
+          # Succeeds: the file will be named "checkpoint-<step>-<i>-of-<n>".
+          saver = tf.train.Saver(sharded=True)
+          saver.save(sess, filepath, global_step=1)
+          self.assertIsNotNone(tf.train.latest_checkpoint(traindir))
+
   def testRelativePath(self):
     # Make sure we have a clean directory to work in.
     with self.tempDir() as tempdir:
@@ -773,6 +877,34 @@ class CheckpointStateTest(tf.test.TestCase):
     self.assertEqual(ckpt.all_model_checkpoint_paths[-1], rel_path)
     self.assertEqual(ckpt.all_model_checkpoint_paths[0], abs_path)
 
+  def testCheckPointStateFailsWhenIncomplete(self):
+    save_dir = _TestDir("checkpoint_state_fails_when_incomplete")
+    os.chdir(save_dir)
+    ckpt_path = os.path.join(save_dir, "checkpoint")
+    ckpt_file = open(ckpt_path, "w")
+    ckpt_file.write("")
+    ckpt_file.close()
+    with self.assertRaises(ValueError):
+      tf.train.get_checkpoint_state(save_dir)
+
+  def testCheckPointCompletesRelativePaths(self):
+    save_dir = _TestDir("checkpoint_completes_relative_paths")
+    os.chdir(save_dir)
+    ckpt_path = os.path.join(save_dir, "checkpoint")
+    ckpt_file = open(ckpt_path, "w")
+    ckpt_file.write("""
+        model_checkpoint_path: "./model.ckpt-687529"
+        all_model_checkpoint_paths: "./model.ckpt-687500"
+        all_model_checkpoint_paths: "./model.ckpt-687529"
+        """)
+    ckpt_file.close()
+    ckpt = tf.train.get_checkpoint_state(save_dir)
+    self.assertEqual(ckpt.model_checkpoint_path,
+                     os.path.join(save_dir, "./model.ckpt-687529"))
+    self.assertEqual(ckpt.all_model_checkpoint_paths[0],
+                     os.path.join(save_dir, "./model.ckpt-687500"))
+    self.assertEqual(ckpt.all_model_checkpoint_paths[1],
+                     os.path.join(save_dir, "./model.ckpt-687529"))
 
 class MetaGraphTest(tf.test.TestCase):
 
@@ -802,7 +934,7 @@ class MetaGraphTest(tf.test.TestCase):
       # not the Saver.export_meta_graph instance-level method.
       meta_graph_def = saver_module.export_meta_graph(
           filename=filename,
-          graph_def=tf.get_default_graph().as_graph_def(),
+          graph_def=tf.get_default_graph().as_graph_def(add_shapes=True),
           collection_list=["input_tensor", "output_tensor"],
           saver_def=None,
       )
@@ -900,7 +1032,9 @@ class MetaGraphTest(tf.test.TestCase):
     saver1_ckpt = os.path.join(test_dir, "saver1.ckpt")
     with self.test_session(graph=tf.Graph()) as sess:
       # Creates a graph.
-      v0 = tf.Variable(10.0, name="v0")
+      v0 = tf.Variable([[1.0, 2.0],
+                        [3.0, 4.0],
+                        [5.0, 6.0]], name="v0")
       v1 = tf.Variable(11.0, name="v1")
       # Creates 2 savers.
       saver0 = tf.train.Saver({"v0": v0}, name="saver0")
@@ -954,7 +1088,11 @@ class MetaGraphTest(tf.test.TestCase):
       new_saver0.restore(sess, saver0_ckpt)
       v0 = sess.graph.get_tensor_by_name("v0:0")
       v1 = sess.graph.get_tensor_by_name("v1:0")
-      self.assertEqual(10.0, v0.eval())
+      self.assertAllEqual([[1.0, 2.0],
+                           [3.0, 4.0],
+                           [5.0, 6.0]], v0.eval())
+      self.assertEqual([3, 2], v0.get_shape())
+      self.assertEqual([], v1.get_shape())
       with self.assertRaisesWithPredicateMatch(
           tf.OpError, lambda e: "uninitialized value v1" in e.message):
         sess.run(v1)
@@ -1026,40 +1164,42 @@ class MetaGraphTest(tf.test.TestCase):
     test_dir = _TestDir("graph_extension")
     filename = os.path.join(test_dir, "metafile")
     saver0_ckpt = os.path.join(test_dir, "saver0.ckpt")
-    with self.test_session(graph=tf.Graph()) as sess:
-      # Creates an inference graph.
-      # Hidden 1
-      images = tf.constant(1.2, tf.float32, shape=[100, 28])
-      with tf.name_scope("hidden1"):
-        weights = tf.Variable(
-            tf.truncated_normal([28, 128],
-                                stddev=1.0 / math.sqrt(float(28))),
-            name="weights")
-        biases = tf.Variable(tf.zeros([128]),
-                             name="biases")
-        hidden1 = tf.nn.relu(tf.matmul(images, weights) + biases)
-      # Hidden 2
-      with tf.name_scope("hidden2"):
-        weights = tf.Variable(
-            tf.truncated_normal([128, 32],
-                                stddev=1.0 / math.sqrt(float(128))),
-            name="weights")
-        biases = tf.Variable(tf.zeros([32]),
-                             name="biases")
-        hidden2 = tf.nn.relu(tf.matmul(hidden1, weights) + biases)
-      # Linear
-      with tf.name_scope("softmax_linear"):
-        weights = tf.Variable(
-            tf.truncated_normal([32, 10],
-                                stddev=1.0 / math.sqrt(float(32))),
-            name="weights")
-        biases = tf.Variable(tf.zeros([10]),
-                             name="biases")
-        logits = tf.matmul(hidden2, weights) + biases
-        tf.add_to_collection("logits", logits)
+    # Creates an inference graph.
+    # Hidden 1
+    images = tf.constant(1.2, tf.float32, shape=[100, 28])
+    with tf.name_scope("hidden1"):
+      weights = tf.Variable(
+          tf.truncated_normal([28, 128],
+                              stddev=1.0 / math.sqrt(float(28))),
+          name="weights")
+      biases = tf.Variable(tf.zeros([128]),
+                           name="biases")
+      hidden1 = tf.nn.relu(tf.matmul(images, weights) + biases)
+    # Hidden 2
+    with tf.name_scope("hidden2"):
+      weights = tf.Variable(
+          tf.truncated_normal([128, 32],
+                              stddev=1.0 / math.sqrt(float(128))),
+          name="weights")
+      biases = tf.Variable(tf.zeros([32]),
+                           name="biases")
+      hidden2 = tf.nn.relu(tf.matmul(hidden1, weights) + biases)
+    # Linear
+    with tf.name_scope("softmax_linear"):
+      weights = tf.Variable(
+          tf.truncated_normal([32, 10],
+                              stddev=1.0 / math.sqrt(float(32))),
+          name="weights")
+      biases = tf.Variable(tf.zeros([10]),
+                           name="biases")
+      logits = tf.matmul(hidden2, weights) + biases
+      tf.add_to_collection("logits", logits)
+    init_all_op = tf.initialize_all_variables()
 
+    with self.test_session() as sess:
+      # Initializes all the variables.
+      sess.run(init_all_op)
       # Runs to logit.
-      tf.initialize_all_variables().run()
       sess.run(logits)
       # Creates a saver.
       saver0 = tf.train.Saver()
@@ -1176,14 +1316,15 @@ class MetaGraphTest(tf.test.TestCase):
 class CheckpointReaderTest(tf.test.TestCase):
 
   def testDebugString(self):
+    # Builds a graph.
+    v0 = tf.Variable([[1, 2, 3], [4, 5, 6]], dtype=tf.float32, name="v0")
+    v1 = tf.Variable([[[1], [2]], [[3], [4]], [[5], [6]]], dtype=tf.float32,
+                     name="v1")
+    init_all_op = tf.initialize_all_variables()
+    save = tf.train.Saver({"v0": v0, "v1": v1})
     save_path = os.path.join(self.get_temp_dir(), "ckpt_for_debug_string")
     with self.test_session() as sess:
-      # Builds a graph.
-      v0 = tf.Variable([[1, 2, 3], [4, 5, 6]], dtype=tf.float32, name="v0")
-      v1 = tf.Variable([[[1], [2]], [[3], [4]], [[5], [6]]], dtype=tf.float32,
-                       name="v1")
-      save = tf.train.Saver({"v0": v0, "v1": v1})
-      tf.initialize_all_variables().run()
+      sess.run(init_all_op)
       # Saves a checkpoint.
       save.save(sess, save_path)
 
@@ -1206,14 +1347,23 @@ class CheckpointReaderTest(tf.test.TestCase):
       self.assertAllEqual(v0.eval(), v0_tensor)
       self.assertAllEqual(v1.eval(), v1_tensor)
       # Verifies get_tensor() fails for non-existent tensors.
-      with self.assertRaisesRegexp(pywrap_tensorflow.StatusNotOK,
-                                   "Not found"):
+      with self.assertRaisesRegexp(errors.NotFoundError,
+                                   "v3 not found in checkpoint file"):
         reader.get_tensor("v3")
 
   def testNonexistentPath(self):
-    with self.assertRaisesRegexp(pywrap_tensorflow.StatusNotOK,
+    with self.assertRaisesRegexp(errors.NotFoundError,
                                  "Unsuccessful TensorSliceReader"):
       tf.train.NewCheckpointReader("non-existent")
+
+
+class WriteGraphTest(tf.test.TestCase):
+
+  def testRecursiveCreate(self):
+    test_dir = _TestDir("deep_dir")
+    tf.Variable([[1, 2, 3], [4, 5, 6]], dtype=tf.float32, name="v0")
+    tf.train.write_graph(tf.get_default_graph().as_graph_def(),
+                         "/".join([test_dir, "l1/l2/l3"]), "graph.pbtxt")
 
 
 if __name__ == "__main__":

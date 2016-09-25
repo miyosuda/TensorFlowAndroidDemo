@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -90,7 +90,7 @@ struct functor_traits<scalar_tanh_fast_derivative_op<T> > {
 
 /**
   * \ingroup CXX11_NeuralNetworks_Module
-  * \brief Template functor to clip the the magnitude of the first scalar.
+  * \brief Template functor to clip the magnitude of the first scalar.
   *
   * \sa class CwiseBinaryOp, MatrixBase::Clip
   */

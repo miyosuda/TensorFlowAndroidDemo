@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,6 +21,8 @@ from __future__ import print_function
 import numpy as np
 import tensorflow as tf
 
+from tensorflow.python.ops import gen_nn_ops
+
 
 class XentTest(tf.test.TestCase):
 
@@ -38,38 +40,39 @@ class XentTest(tf.test.TestCase):
   def _testXent(self, np_features, np_labels, use_gpu=False):
     np_loss, np_backprop = self._npXent(np_features, np_labels)
     with self.test_session(use_gpu=use_gpu) as sess:
-      loss = tf.nn.softmax_cross_entropy_with_logits(np_features, np_labels)
-      backprop = loss.op.outputs[1]
+      loss, backprop = gen_nn_ops._softmax_cross_entropy_with_logits(
+          np_features, np_labels)
       tf_loss, tf_backprop = sess.run([loss, backprop])
-    self.assertAllClose(np_loss, tf_loss)
-    self.assertAllClose(np_backprop, tf_backprop)
+    self.assertAllCloseAccordingToType(np_loss, tf_loss)
+    self.assertAllCloseAccordingToType(np_backprop, tf_backprop)
 
   def _testAll(self, features, labels):
     self._testXent(features, labels, use_gpu=False)
     self._testXent(features, labels, use_gpu=True)
 
   def _testSingleClass(self, use_gpu=False):
-    with self.test_session(use_gpu=use_gpu) as sess:
-      loss = tf.nn.softmax_cross_entropy_with_logits(
-          np.array([[1.], [-1.], [0.]]).astype(np.float32),
-          np.array([[-1.], [0.], [1.]]).astype(np.float32))
-      backprop = loss.op.outputs[1]
-      tf_loss, tf_backprop = sess.run([loss, backprop])
-    self.assertAllClose([0.0, 0.0, 0.0], tf_loss)
-    self.assertAllClose([[2.0], [1.0], [0.0]], tf_backprop)
+    for dtype in np.float16, np.float32:
+      with self.test_session(use_gpu=use_gpu) as sess:
+        loss, backprop = gen_nn_ops._softmax_cross_entropy_with_logits(
+            np.array([[1.], [-1.], [0.]]).astype(dtype),
+            np.array([[-1.], [0.], [1.]]).astype(dtype))
+        tf_loss, tf_backprop = sess.run([loss, backprop])
+      self.assertAllClose([0.0, 0.0, 0.0], tf_loss)
+      self.assertAllClose([[2.0], [1.0], [0.0]], tf_backprop)
 
   def testSingleClass(self):
     self._testSingleClass(True)
     self._testSingleClass(False)
 
   def testRankTooLarge(self):
-    np_features = np.array(
-        [[[1., 1., 1., 1.]], [[1., 2., 3., 4.]]]).astype(np.float32)
-    np_labels = np.array(
-        [[[0., 0., 0., 1.]], [[0., .5, .5, 0.]]]).astype(np.float32)
-    self.assertRaisesRegexp(
-        ValueError, "must have rank 2",
-        tf.nn.softmax_cross_entropy_with_logits, np_features, np_labels)
+    for dtype in np.float16, np.float32:
+      np_features = np.array(
+          [[[1., 1., 1., 1.]], [[1., 2., 3., 4.]]]).astype(dtype)
+      np_labels = np.array(
+          [[[0., 0., 0., 1.]], [[0., .5, .5, 0.]]]).astype(dtype)
+      self.assertRaisesRegexp(ValueError, "must have rank 2",
+                              gen_nn_ops._softmax_cross_entropy_with_logits,
+                              np_features, np_labels)
 
   def testNpXent(self):
     # We create 2 batches of logits for testing.
@@ -108,14 +111,19 @@ class XentTest(tf.test.TestCase):
   def testShapeMismatch(self):
     with self.test_session():
       with self.assertRaises(ValueError):
-        tf.nn.softmax_cross_entropy_with_logits(
+        gen_nn_ops._softmax_cross_entropy_with_logits(
             [[0., 1.], [2., 3.]], [[0., 1., 0.], [1., 0., 0.]])
 
   def testNotMatrix(self):
     with self.test_session():
       with self.assertRaises(ValueError):
-        tf.nn.softmax_cross_entropy_with_logits([0., 1., 2., 3.],
-                                                [0., 1., 0., 1.])
+        gen_nn_ops._softmax_cross_entropy_with_logits([0., 1., 2., 3.],
+                                                      [0., 1., 0., 1.])
+
+  def testHalf(self):
+    self._testAll(
+        np.array([[1., 1., 1., 1.], [1., 2., 3., 4.]]).astype(np.float16),
+        np.array([[0., 0., 0., 1.], [0., .5, .5, 0.]]).astype(np.float16))
 
   def testFloat(self):
     self._testAll(
@@ -123,10 +131,9 @@ class XentTest(tf.test.TestCase):
         np.array([[0., 0., 0., 1.], [0., .5, .5, 0.]]).astype(np.float32))
 
   def testDouble(self):
-    self._testXent(
+    self._testAll(
         np.array([[1., 1., 1., 1.], [1., 2., 3., 4.]]).astype(np.float64),
-        np.array([[0., 0., 0., 1.], [0., .5, .5, 0.]]).astype(np.float64),
-        use_gpu=False)
+        np.array([[0., 0., 0., 1.], [0., .5, .5, 0.]]).astype(np.float64))
 
   def testGradient(self):
     with self.test_session():

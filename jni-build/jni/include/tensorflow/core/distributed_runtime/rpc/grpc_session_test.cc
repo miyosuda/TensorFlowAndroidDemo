@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -98,10 +98,6 @@ TEST(GrpcSessionTest, BasicNonProtoAPI) {
   for (int iters = 0; iters < 25; ++iters) {
     TF_CHECK_OK(session->Create(graph));
     {
-      std::vector<std::pair<string, Tensor>> inputs;
-      TF_CHECK_OK(session->Run(inputs, {}, {}, {}));
-    }
-    {
       // Just run to target node
       std::vector<std::pair<string, Tensor>> inputs;
       std::vector<string> targets = {node_names[2]};
@@ -174,14 +170,14 @@ TEST(GrpcSessionTest, NonLocalWithFilters) {
     GraphDef graph_copy(graph);
     graph::SetDefaultDevice(cluster->devices()[0].name(), &graph_copy);
     TF_CHECK_OK(session->Create(graph_copy));
-    TF_CHECK_OK(session->Run({}, {}, {}, nullptr));
+    TF_CHECK_OK(session->Run({}, {}, {node_names[2]}, nullptr));
     TF_CHECK_OK(session->Close());
   }
   {
     GraphDef graph_copy(graph);
     graph::SetDefaultDevice(cluster->devices()[1].name(), &graph_copy);
     TF_CHECK_OK(session->Create(graph_copy));
-    auto status = session->Run({}, {}, {}, nullptr);
+    auto status = session->Run({}, {}, {node_names[2]}, nullptr);
     EXPECT_EQ(tensorflow::error::INVALID_ARGUMENT, status.code());
     TF_CHECK_OK(session->Close());
   }
@@ -319,6 +315,54 @@ TEST(GrpcSessionTest, MultiDevices) {
       }
     }
   }
+}
+
+TEST(GrpcSessionTest, LargeTensorSend) {
+  std::unique_ptr<test::TestCluster> cluster;
+  TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(1, 0), 2, &cluster));
+
+  Graph graph(OpRegistry::Global());
+
+  // Define a 3 GB fill result.
+  Tensor fill_shape_tensor(DT_INT32, TensorShape({4}));
+  fill_shape_tensor.vec<int32>()(0) = 1;
+  fill_shape_tensor.vec<int32>()(1) = 256;
+  fill_shape_tensor.vec<int32>()(2) = 1024;
+  fill_shape_tensor.vec<int32>()(3) = 1024;
+  Node* fill_shape_node = test::graph::Constant(&graph, fill_shape_tensor);
+
+  Tensor fill_val_tensor(DT_FLOAT, TensorShape({}));
+  fill_val_tensor.flat<float>()(0) = 1.0;
+  Node* fill_val_node = test::graph::Constant(&graph, fill_val_tensor);
+
+  Node* fill_node =
+      test::graph::Binary(&graph, "Fill", fill_shape_node, fill_val_node);
+
+  Tensor max_axes_tensor(DT_INT32, TensorShape({4}));
+  max_axes_tensor.vec<int32>()(0) = 0;
+  max_axes_tensor.vec<int32>()(1) = 1;
+  max_axes_tensor.vec<int32>()(2) = 2;
+  max_axes_tensor.vec<int32>()(3) = 3;
+  Node* max_axes_node = test::graph::Constant(&graph, max_axes_tensor);
+  Node* max_node = test::graph::Reduce(&graph, "Max", fill_node, max_axes_node);
+
+  GraphDef def;
+  test::graph::ToGraphDef(&graph, &def);
+
+  SetDevice(&def, fill_node->name(), cluster->devices()[0].name());
+  SetDevice(&def, fill_node->name(), cluster->devices()[1].name());
+
+  std::unique_ptr<Session> session(
+      NewRemote(Options(cluster->targets()[0], 1000)));
+  ASSERT_TRUE(session != nullptr);
+  TF_CHECK_OK(session->Create(def));
+  {
+    std::vector<Tensor> outputs;
+    TF_CHECK_OK(session->Run({}, {max_node->name()}, {}, &outputs));
+    ASSERT_EQ(1, outputs.size());
+    IsSingleFloatValue(outputs[0], 1.0);
+  }
+  TF_CHECK_OK(session->Close());
 }
 
 TEST(GrpcSessionTest, MultiDevices_String) {

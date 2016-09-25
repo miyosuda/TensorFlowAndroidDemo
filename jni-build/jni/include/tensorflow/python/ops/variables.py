@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,9 +19,11 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.framework import variable_pb2
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 
 
@@ -253,6 +255,10 @@ class Variable(object):
 
     if collections is None:
       collections = [ops.GraphKeys.VARIABLES]
+    if not isinstance(collections, (list, tuple, set)):
+      raise ValueError(
+          "collections argument to Variable constructor must be a list, tuple, "
+          "or set. Got %s of type %s" % (collections, type(collections)))
     if trainable and ops.GraphKeys.TRAINABLE_VARIABLES not in collections:
       collections = list(collections) + [ops.GraphKeys.TRAINABLE_VARIABLES]
     with ops.control_dependencies(None):
@@ -302,10 +308,9 @@ class Variable(object):
               initial_value_shape.as_proto())
 
         # Assigns initial value.
-        with ops.colocate_with(self._variable.op):
-          self._initializer_op = state_ops.assign(
-              self._variable, self._initial_value,
-              validate_shape=validate_shape).op
+        self._initializer_op = state_ops.assign(
+            self._variable, self._initial_value,
+            validate_shape=validate_shape).op
 
         # TODO(vrv): Change this class to not take caching_device, but
         # to take the op to colocate the snapshot with, so we can use
@@ -609,6 +614,15 @@ class Variable(object):
     else:
       setattr(Variable, operator, lambda a, b: Variable._RunOp(operator, a, b))
 
+  # NOTE(mrry): This enables the Variable's overloaded "right" binary
+  # operators to run when the left operand is an ndarray, because it
+  # accords the Variable class higher priority than an ndarray, or a
+  # numpy matrix.
+  # TODO(mrry): Convert this to using numpy's __numpy_ufunc__
+  # mechanism, which allows more control over how Variables interact
+  # with ndarrays.
+  __array_priority__ = 100
+
   @staticmethod
   def _RunOp(operator, a, b):
     """Run the operator 'op' for 'a'.
@@ -745,6 +759,92 @@ class Variable(object):
     self._save_slice_info = save_slice_info
 
 
+class _PartitionedVariable(object):
+  """Wrapper around a list of partitioned `Variable`.
+
+  May get merged into the main `Variable` class.
+  """
+
+  def __init__(self, name, shape, dtype, variable_list, partitions):
+    """Creates a new partitioned variable wrapper.
+
+    Args:
+      name: Overall name of the variables.
+      shape: Overall shape of the variables.
+      dtype: Type of the variables.
+      variable_list: List of `Variable` that comprise this partitioned variable.
+      partitions: List of number of partitions for each dimension.
+    """
+    self._name = name
+    self._shape = shape
+    self._dtype = dtype
+    self._variable_list = variable_list
+    self._partitions = partitions
+    self._as_tensor = None
+
+  def as_tensor(self):
+    """Returns the overall concatenated value as a `Tensor`.
+
+    Returns:
+      `Tensor` containing the concatenated value.
+    """
+    if self._as_tensor is not None:
+      return self._as_tensor
+
+    if len(self._variable_list) == 1:
+      with ops.name_scope(None):
+        self._as_tensor = array_ops.identity(self._variable_list[0],
+                                             name=self._name)
+        return self._as_tensor
+
+    if all([p < 2 for p in self._partitions]):
+      partition_ix = 0
+    else:
+      partition_ix = [i for i, p in enumerate(self._partitions) if p > 1][0]
+    with ops.name_scope(self._name + "/ConcatPartitions/"):
+      concatenated = array_ops.concat(partition_ix, self._variable_list)
+    with ops.name_scope(None):
+      # Be sure to cache the concatenated tensor to not do extraneous
+      # computations.
+      self._as_tensor = array_ops.identity(concatenated, name=self._name)
+    return self._as_tensor
+
+  @staticmethod
+  def _TensorConversionFunction(v, dtype=None, name=None, as_ref=False):
+    _ = name
+    if dtype is not None and not dtype.is_compatible_with(v.dtype):
+      raise ValueError(
+          "Incompatible type conversion requested to type '%s' for variable "
+          "of type '%s'" % (dtype.name, v.dtype.name))
+    if as_ref:
+      raise NotImplementedError(
+          "_PartitionedVariable doesn't support being used as a reference.")
+    else:
+      return v.as_tensor()
+
+  @property
+  def name(self):
+    return self._name
+
+  @property
+  def dtype(self):
+    return self._dtype
+
+  def get_shape(self):
+    return self._shape
+
+  def _get_variable_list(self):
+    return self._variable_list
+
+  def _get_partitions(self):
+    return self._partitions
+
+  def assign(self, value, use_locking=False):
+    _ = value, use_locking
+    raise NotImplementedError(
+        "assign() has not been implemented for _PartitionedVariable.")
+
+
 def all_variables():
   """Returns all variables that must be saved/restored.
 
@@ -771,6 +871,7 @@ def trainable_variables():
   """
   return ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)
 
+
 def local_variables():
   """Returns all variables created with collection=[LOCAL_VARIABLES].
 
@@ -778,6 +879,16 @@ def local_variables():
     A list of local Variable objects.
   """
   return ops.get_collection(ops.GraphKeys.LOCAL_VARIABLES)
+
+
+def model_variables():
+  """Returns all variables in the MODEL_VARIABLES collection.
+
+  Returns:
+    A list of local Variable objects.
+  """
+  return ops.get_collection(ops.GraphKeys.MODEL_VARIABLES)
+
 
 def moving_average_variables():
   """Returns all variables that maintain their moving averages.
@@ -842,19 +953,23 @@ def initialize_local_variables():
 
 
 def is_variable_initialized(variable):
-  """Returns an Op to check if a variable has been initialized.
+  """Tests if a variable has been initialized.
 
   Args:
     variable: A `Variable`.
 
   Returns:
-    An operation to check whether a variable has been initialized.
+    Returns a scalar boolean Tensor, `True` if the variable has been
+    initialized, `False` otherwise.
   """
   return state_ops.is_variable_initialized(variable)
 
 
 def assert_variables_initialized(var_list=None):
   """Returns an Op to check if variables are initialized.
+
+  NOTE: This function is obsolete and will be removed in 6 months.  Please
+  change your implementation to use `report_uninitialized_variables()`.
 
   When run, the returned Op will raise the exception `FailedPreconditionError`
   if any of the variables has not yet been initialized.
@@ -891,12 +1006,55 @@ def assert_variables_initialized(var_list=None):
       return array_ops.pack(ranks)
 
 
+def report_uninitialized_variables(var_list=None,
+                                   name="report_uninitialized_variables"):
+  """Adds ops to list the names of uninitialized variables.
+
+  When run, it returns a 1-D tensor containing the names of uninitialized
+  variables if there are any, or an empty array if there are none.
+
+  Args:
+    var_list: List of `Variable` objects to check. Defaults to the
+      value of `all_variables() + local_variables()`
+    name: Optional name of the `Operation`.
+
+  Returns:
+    A 1-D tensor containing names of the unintialized variables, or an empty 1-D
+    tensor if there are no variables or no uninitialized variables.
+  """
+  if var_list is None:
+    var_list = all_variables() + local_variables()
+  # Backwards compatibility for old-style variables. TODO(touts): remove.
+  if not var_list:
+    var_list = []
+    for op in ops.get_default_graph().get_operations():
+      if op.type in ["Variable", "AutoReloadVariable"]:
+        var_list.append(op.outputs[0])
+  if not var_list:
+    # Return an empty tensor so we only need to check for returned tensor
+    # size being 0 as an indication of model ready.
+    return array_ops.constant([], dtype=dtypes.string, name=name)
+  else:
+    # Get a 1-D boolean tensor listing whether each variable is initialized.
+    variables_mask = math_ops.logical_not(array_ops.pack(
+        [state_ops.is_variable_initialized(v) for v in var_list]))
+    # Get a 1-D string tensor containing all the variable names.
+    variable_names_tensor = array_ops.constant([s.op.name for s in var_list])
+    # Return a 1-D tensor containing all the names of uninitialized variables.
+    return array_ops.boolean_mask(variable_names_tensor, variables_mask,
+                                  name=name)
+
+
 # pylint: disable=protected-access
 ops.register_tensor_conversion_function(Variable,
                                         Variable._TensorConversionFunction)
 Variable._OverloadAllOperators()
+
+ops.register_tensor_conversion_function(
+    _PartitionedVariable, _PartitionedVariable._TensorConversionFunction)
 # pylint: enable=protected-access
 
+ops.register_dense_tensor_like_type(Variable)
 ops.register_proto_function(ops.GraphKeys.VARIABLES,
                             proto_type=variable_pb2.VariableDef,
                             to_proto=Variable.to_proto,

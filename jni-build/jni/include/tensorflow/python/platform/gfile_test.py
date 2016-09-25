@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,9 +22,9 @@ import os
 import shutil
 import time
 
-from tensorflow.python.platform.default import _gfile as gfile
-from tensorflow.python.platform.default import _googletest as googletest
-from tensorflow.python.platform.default import _logging as logging
+from tensorflow.python.platform import gfile
+from tensorflow.python.platform import googletest
+from tensorflow.python.platform import tf_logging as logging
 
 
 class _BaseTest(object):

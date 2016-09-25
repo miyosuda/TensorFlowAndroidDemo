@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -100,7 +100,7 @@ class ProtoTextOutput {
   }
 
  private:
-  void AppendFieldAndValue(const char field_name[], const string& value_text) {
+  void AppendFieldAndValue(const char field_name[], StringPiece value_text) {
     StrAppend(output_, level_empty_ ? "" : field_separator_, indent_,
               field_name, kColonSeparator, value_text);
     level_empty_ = false;

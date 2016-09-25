@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -55,8 +55,13 @@ class SparseReduceSumOp : public OpKernel {
             "Expected reduction_axes to be a scalar or a vector; got shape: ",
             reduction_axes_t->shape().DebugString()));
 
+    // TODO(zongheng): we will call Reorder() below, which will modify in-place
+    // the underlying indices and values buffers.  To avoid surprises of this
+    // kernel being stateful, we work around the above by making deep copies
+    // here.  Remove this if/when we change Reorder()'s semantics.
     const auto shape_vec = shape_t->vec<int64>();
-    SparseTensor sp(*indices_t, *values_t, TensorShape(shape_vec));
+    SparseTensor sp(tensor::DeepCopy(*indices_t), tensor::DeepCopy(*values_t),
+                    TensorShape(shape_vec));
 
     // Calculates group_by_dims == {0, .., NDIMS-1} \ reduction_axes.
     const int ndims = static_cast<int>(shape_t->NumElements());
@@ -69,6 +74,14 @@ class SparseReduceSumOp : public OpKernel {
     std::vector<int32> axes(num_reduction_axes);
     std::copy_n(reduction_axes_t->flat<int32>().data(), num_reduction_axes,
                 axes.begin());
+    for (int i = 0; i < num_reduction_axes; ++i) {
+      int32 axis = axes[i];
+      OP_REQUIRES(
+          ctx, axis >= -ndims && axis < ndims,
+          errors::InvalidArgument("Invalid reduction dimension ", axis,
+                                  ", for input with ", ndims, " dimensions."));
+      axes[i] = (axes[i] + ndims) % ndims;
+    }
     std::sort(axes.begin(), axes.end());
 
     std::vector<int64> group_by_dims;

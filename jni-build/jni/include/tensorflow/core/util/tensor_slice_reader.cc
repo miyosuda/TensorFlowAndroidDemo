@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_slice_reader.h"
 
 #include <vector>
+#include "tensorflow/core/framework/types.pb_text.h"
 #include "tensorflow/core/framework/versions.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
@@ -39,6 +40,7 @@ TensorSliceReader::Table::~Table() {}
 namespace {
 class TensorSliceReaderTable : public TensorSliceReader::Table {
  public:
+  // Takes ownership of 'f'.
   explicit TensorSliceReaderTable(RandomAccessFile* f, table::Table* t)
       : file_(f), table_(t) {}
 
@@ -60,7 +62,7 @@ class TensorSliceReaderTable : public TensorSliceReader::Table {
   }
 
  private:
-  RandomAccessFile* file_;
+  RandomAccessFile* file_;  // Owns.
   table::Table* table_;
 };
 }  // namespace
@@ -69,7 +71,7 @@ Status OpenTableTensorSliceReader(const string& fname,
                                   TensorSliceReader::Table** result) {
   *result = nullptr;
   Env* env = Env::Default();
-  RandomAccessFile* f = nullptr;
+  std::unique_ptr<RandomAccessFile> f;
   Status s = env->NewRandomAccessFile(fname, &f);
   if (s.ok()) {
     uint64 file_size;
@@ -77,9 +79,9 @@ Status OpenTableTensorSliceReader(const string& fname,
     if (s.ok()) {
       table::Options options;
       table::Table* table;
-      s = table::Table::Open(options, f, file_size, &table);
+      s = table::Table::Open(options, f.get(), file_size, &table);
       if (s.ok()) {
-        *result = new TensorSliceReaderTable(f, table);
+        *result = new TensorSliceReaderTable(f.release(), table);
         return Status::OK();
       } else {
         s = Status(s.code(),
@@ -91,7 +93,6 @@ Status OpenTableTensorSliceReader(const string& fname,
     }
   }
   LOG(WARNING) << "Could not open " << fname << ": " << s;
-  delete f;
   return s;
 }
 
@@ -318,7 +319,7 @@ const string TensorSliceReader::DebugString() const {
   if (status().ok()) {
     for (auto e : Tensors()) {
       strings::StrAppend(&shape_str, e.first, " (",
-                         DataType_Name(e.second->type()), ") ",
+                         EnumName_DataType(e.second->type()), ") ",
                          e.second->shape().DebugString(), "\n");
     }
   }

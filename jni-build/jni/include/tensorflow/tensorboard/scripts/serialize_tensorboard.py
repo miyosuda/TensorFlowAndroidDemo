@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -60,6 +60,7 @@ FLAGS = tf.flags.FLAGS
 BAD_CHARACTERS = "#%&{}\\/<>*? $!'\":@+`|="
 DEFAULT_SUFFIX = '.json'
 IMAGE_SUFFIX = '.png'
+AUDIO_SUFFIX = '.wav'
 GRAPH_SUFFIX = '.pbtxt'
 
 
@@ -85,7 +86,7 @@ class TensorBoardStaticSerializer(object):
 
   def __init__(self, connection, target_path):
     self.connection = connection
-    EnsureDirectoryExists(os.path.join(target_path, 'data'))
+    EnsureDirectoryExists(target_path)
     self.path = target_path
 
   def GetAndSave(self, url, save_suffix, unzip=False):
@@ -94,7 +95,8 @@ class TensorBoardStaticSerializer(object):
                             '/data/' + url,
                             headers={'content-type': 'text/plain'})
     response = self.connection.getresponse()
-    destination = self.path + '/data/' + Clean(url) + save_suffix
+    file_name = Clean(url) + save_suffix
+    destination = os.path.join(self.path, file_name)
 
     if response.status != 200:
       raise IOError(url)
@@ -138,9 +140,22 @@ class TensorBoardStaticSerializer(object):
                 url = 'individualImage?' + im['query']
                 # pull down the images themselves.
                 self.GetAndSave(url, IMAGE_SUFFIX)
+          elif tag_type == 'audio':
+            for t in tags:
+              audio = self.GetRouteAndSave('audio', {'run': run, 'tag': t})
+              for snd in audio:
+                url = 'individualAudio?' + snd['query']
+                # pull down the audio clips themselves
+                self.GetAndSave(url, AUDIO_SUFFIX)
+          elif tag_type == 'run_metadata':
+            for t in tags:
+              url = Url('run_metadata', {'run': run, 'tag': t})
+              self.GetAndSave(url, GRAPH_SUFFIX, unzip=True)
+          elif tag_type == 'firstEventTimestamp':
+            pass
           else:
             for t in tags:
-              # Save this, whatever it is :)
+            # Save this, whatever it is :)
               self.GetRouteAndSave(tag_type, {'run': run, 'tag': t})
         except IOError as e:
           PrintAndLog('Retrieval failed for %s/%s/%s' % (tag_type, run, tags),

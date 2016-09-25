@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -31,6 +31,7 @@ collected in the graph.
 @@initialize_variables
 @@initialize_local_variables
 @@is_variable_initialized
+@@report_uninitialized_variables
 @@assert_variables_initialized
 
 ## Saving and Restoring Variables
@@ -64,6 +65,11 @@ create variables contingent on certain conditions.
 @@zeros_initializer
 @@ones_initializer
 
+## Variable Partitioners for Sharding
+
+@@variable_axis_size_partitioner
+@@min_max_variable_partitioner
+
 ## Sparse Variable Updates
 
 The sparse update ops modify a subset of the entries in a dense `Variable`,
@@ -83,16 +89,23 @@ automatically by the optimizers in most cases.
 @@scatter_sub
 @@sparse_mask
 @@IndexedSlices
+
+
+## Exporting and Importing Meta Graphs
+
+@@export_meta_graph
+@@import_meta_graph
+
 """
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.ops import common_shapes
 from tensorflow.python.ops import gen_state_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import

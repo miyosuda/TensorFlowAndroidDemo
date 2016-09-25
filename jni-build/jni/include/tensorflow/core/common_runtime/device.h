@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/control_flow.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
+#include "tensorflow/core/framework/device_attributes.pb_text.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -84,7 +85,7 @@ class Device : public DeviceBase {
   // Asynchronous kernel's compute.
   virtual void ComputeAsync(AsyncOpKernel* op_kernel, OpKernelContext* context,
                             AsyncOpKernel::DoneCallback done) {
-    op_kernel->ComputeAsync(context, done);
+    op_kernel->ComputeAsync(context, std::move(done));
   }
 
   // Takes ownership of the references in tensors. If necessary, a
@@ -135,7 +136,7 @@ class Device : public DeviceBase {
   ResourceMgr* resource_manager() { return rmgr_; }
 
   // Summarizes the status of this Device, for debugging.
-  string DebugString() const { return device_attributes_.DebugString(); }
+  string DebugString() const { return ProtoDebugString(device_attributes_); }
 
   // Assembles the parameter components into a complete DeviceAttributes value.
   static DeviceAttributes BuildDeviceAttributes(

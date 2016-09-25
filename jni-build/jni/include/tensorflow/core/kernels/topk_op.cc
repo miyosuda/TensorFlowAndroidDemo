@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -33,7 +33,6 @@ class TopK : public OpKernel {
   explicit TopK(OpKernelConstruction* context) : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("sorted", &sorted_));
     if (num_inputs() < 2) {  // k is an attr (TopK).
-      OP_DEPRECATED(context, 7, "Use TopKV2 instead");
       OP_REQUIRES_OK(context, context->GetAttr("k", &k_));
     } else {  // k is an input (TopKV2), so we won't know it until Compute.
       k_ = -1;

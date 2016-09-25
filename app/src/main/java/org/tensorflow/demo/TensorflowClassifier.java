@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -27,17 +27,20 @@ import java.util.StringTokenizer;
 /**
  * JNI wrapper class for the Tensorflow native code.
  */
-public class TensorflowClassifier implements Classifier {
+public class TensorFlowClassifier implements Classifier {
   private static final String TAG = "TensorflowClassifier";
 
   // jni native methods.
-  public native int initializeTensorflow(
+  public native int initializeTensorFlow(
       AssetManager assetManager,
       String model,
       String labels,
       int numClasses,
       int inputSize,
-      int imageMean);
+      int imageMean,
+      float imageStd,
+      String inputName,
+      String outputName);
 
   private native String classifyImageBmp(Bitmap bitmap);
 

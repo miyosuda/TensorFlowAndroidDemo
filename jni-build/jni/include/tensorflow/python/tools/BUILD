@@ -55,8 +55,8 @@ py_binary(
     srcs = [
         "graph_metrics.py",
     ],
-    srcs_version = "PY2AND3",
     main = "graph_metrics.py",
+    srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
     ],
@@ -84,6 +84,40 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_library(
+    name = "strip_unused_lib",
+    srcs = ["strip_unused.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:platform",
+    ],
+)
+
+py_binary(
+    name = "strip_unused",
+    srcs = ["strip_unused.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:platform",
+    ],
+)
+
+py_test(
+    name = "strip_unused_test",
+    size = "small",
+    srcs = [
+        "strip_unused_test.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":strip_unused",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
     ],
 )
 

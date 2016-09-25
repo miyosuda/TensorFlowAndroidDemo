@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,6 +19,8 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/attr_value_util.h"
+#include "tensorflow/core/framework/graph.pb_text.h"
+#include "tensorflow/core/framework/kernel_def.pb_text.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/memory_types.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -89,6 +91,12 @@ OpKernel::OpKernel(OpKernelConstruction* context)
   OP_REQUIRES_OK(context,
                  NameRangesForNode(def_, context->op_def(), &input_name_map_,
                                    &output_name_map_));
+  OP_REQUIRES_OK(context, CheckOpDeprecation(context->op_def(),
+                                             context->graph_def_version()));
+
+  // Kernels executing on GPU tie very few resources on the CPU where the
+  // scheduler runs: we consider them as inexpensive.
+  expensive_ = context->device_type() != DeviceType(DEVICE_GPU);
 }
 
 OpKernel::~OpKernel() {}
@@ -155,7 +163,7 @@ Status OpKernelConstruction::allocate_temp(DataType type,
   attr.allocation_will_be_logged = true;
   Tensor new_temp(allocator_, type, shape, attr);
 
-  if (!new_temp.IsInitialized() && shape.num_elements() > 0) {
+  if (!new_temp.IsInitialized()) {
     return errors::ResourceExhausted(
         "OOM when allocating temporary tensor with shape", shape.DebugString());
   }
@@ -190,6 +198,7 @@ Status OpKernelConstruction::allocate_persistent(
 OpKernelContext::OpKernelContext(Params* params)
     : OpKernelContext(
           params, static_cast<int>(params->op_kernel->output_types().size())) {}
+
 OpKernelContext::OpKernelContext(Params* params, int noutputs)
     : params_(params), outputs_(noutputs) {
   Allocator* eigen_gpu_allocator = get_allocator(AllocatorAttributes());
@@ -197,7 +206,9 @@ OpKernelContext::OpKernelContext(Params* params, int noutputs)
   params_->device->ReinitializeGpuDevice(this, params_->eigen_gpu_device,
                                          params_->op_device_context,
                                          eigen_gpu_allocator);
-  record_tensor_accesses_ = params_->device->RequiresRecordingAccessedTensors();
+  if (params_->record_tensor_accesses) {
+    referenced_tensors_.Init();
+  }
 }
 
 OpKernelContext::~OpKernelContext() {
@@ -206,6 +217,7 @@ OpKernelContext::~OpKernelContext() {
       delete value.tensor;
     }
   }
+  if (params_->record_tensor_accesses) referenced_tensors_.Destroy();
 }
 
 Allocator* OpKernelContext::get_allocator(AllocatorAttributes attr) {
@@ -234,7 +246,7 @@ void OpKernelContext::SetStatus(const Status& status) {
 void OpKernelContext::really_record_tensor_reference(const Tensor& tensor) {
   mutex_lock l(mu_);
   // Keep a reference to the underlying memory around.
-  referenced_tensors_.Add(tensor);
+  referenced_tensors_->Add(tensor);
 }
 
 Status OpKernelContext::input(StringPiece name, const Tensor** tensor) {
@@ -439,16 +451,16 @@ Status OpKernelContext::allocate_tensor(
   logged_attr.allocation_will_be_logged = true;
   Tensor new_tensor(a, type, shape, logged_attr);
 
-  if (!new_tensor.IsInitialized() && shape.num_elements() > 0) {
+  if (!new_tensor.IsInitialized()) {
     return errors::ResourceExhausted("OOM when allocating tensor with shape",
                                      shape.DebugString());
   }
-  if (LogMemory::IsEnabled()) {
+  if (params_->log_memory) {
     LogMemory::RecordTensorAllocation(params_->op_kernel->name(),
                                       params_->step_id, new_tensor);
   }
-  *out_tensor = new_tensor;
   record_tensor_reference(new_tensor);
+  *out_tensor = std::move(new_tensor);
   return Status::OK();
 }
 
@@ -658,7 +670,7 @@ Status AttrsMatch(const NodeDef& node_def, const KernelDef& kernel_def,
   for (const auto& constraint : kernel_def.constraint()) {
     if (constraint.allowed_values().list().type_size() == 0) {
       return errors::Unimplemented(
-          "KernelDef '", kernel_def.ShortDebugString(),
+          "KernelDef '", ProtoShortDebugString(kernel_def),
           " has constraint on attr '", constraint.name(),
           "' with unsupported type: ",
           SummarizeAttrValue(constraint.allowed_values()));
@@ -673,7 +685,7 @@ Status AttrsMatch(const NodeDef& node_def, const KernelDef& kernel_def,
       } else {
         if (!AttrValueHasType(*found, "list(type)").ok()) {
           return errors::InvalidArgument(
-              "KernelDef '", kernel_def.ShortDebugString(),
+              "KernelDef '", ProtoShortDebugString(kernel_def),
               "' has constraint on attr '", constraint.name(),
               "' that has value '", SummarizeAttrValue(*found),
               "' that does not have type 'type' or 'list(type)' in NodeDef "
@@ -692,7 +704,7 @@ Status AttrsMatch(const NodeDef& node_def, const KernelDef& kernel_def,
       return errors::InvalidArgument(
           "OpKernel '", kernel_def.op(), "' has constraint on attr '",
           constraint.name(), "' not in NodeDef '", SummarizeNodeDef(node_def),
-          "', KernelDef: '", kernel_def.ShortDebugString(), "'");
+          "', KernelDef: '", ProtoShortDebugString(kernel_def), "'");
     }
   }
   *match = true;
@@ -700,8 +712,10 @@ Status AttrsMatch(const NodeDef& node_def, const KernelDef& kernel_def,
 }
 
 Status FindKernelRegistration(DeviceType device_type, const NodeDef& node_def,
-                              const KernelRegistration** reg) {
+                              const KernelRegistration** reg,
+                              bool* was_attr_mismatch) {
   *reg = nullptr;
+  *was_attr_mismatch = false;
   string label;  // Label defaults to empty if not found in NodeDef.
   GetNodeAttr(node_def, "_kernel", &label);
   const string key = Key(node_def.op(), device_type, label);
@@ -715,10 +729,13 @@ Status FindKernelRegistration(DeviceType device_type, const NodeDef& node_def,
       if (*reg != nullptr) {
         return errors::InvalidArgument(
             "Multiple OpKernel registrations match NodeDef '",
-            SummarizeNodeDef(node_def), "': '", (*reg)->def.ShortDebugString(),
-            "' and '", iter->second.def.ShortDebugString(), "'");
+            SummarizeNodeDef(node_def), "': '",
+            ProtoShortDebugString((*reg)->def), "' and '",
+            ProtoShortDebugString(iter->second.def), "'");
       }
       *reg = &iter->second;
+    } else {
+      *was_attr_mismatch = true;
     }
   }
   return Status::OK();
@@ -729,12 +746,19 @@ Status FindKernelRegistration(DeviceType device_type, const NodeDef& node_def,
 Status FindKernelDef(DeviceType device_type, const NodeDef& node_def,
                      const KernelDef** def, string* kernel_class_name) {
   const KernelRegistration* reg = nullptr;
-  TF_RETURN_IF_ERROR(FindKernelRegistration(device_type, node_def, &reg));
+  bool was_attr_mismatch;
+  TF_RETURN_IF_ERROR(
+      FindKernelRegistration(device_type, node_def, &reg, &was_attr_mismatch));
   if (reg == nullptr) {
-    return errors::NotFound("No registered '", node_def.op(), "' OpKernel for ",
-                            DeviceTypeString(device_type),
-                            " devices compatible with node ",
-                            SummarizeNodeDef(node_def));
+    Status s = errors::NotFound(
+        "No registered '", node_def.op(), "' OpKernel for ",
+        DeviceTypeString(device_type), " devices compatible with node ",
+        SummarizeNodeDef(node_def));
+    if (was_attr_mismatch) {
+      errors::AppendToMessage(
+          &s, " (OpKernel was found, but attributes didn't match)");
+    }
+    return s;
   }
   if (def != nullptr) *def = &reg->def;
   if (kernel_class_name != nullptr) *kernel_class_name = reg->kernel_class_name;
@@ -748,12 +772,14 @@ Status SupportedDeviceTypesForNode(
   // DynamicPlacer) to consider the possibility that 'def' is call to
   // a user-defined function and only calls this
   // SupportedDeviceTypesForNode for primitive ops.
-  Status s;
-  const OpDef* op_def = OpRegistry::Global()->LookUp(def.op(), &s);
-  if (op_def) {
+  const OpRegistrationData* op_reg_data;
+  const Status s = OpRegistry::Global()->LookUp(def.op(), &op_reg_data);
+  if (s.ok()) {
     for (const DeviceType& device_type : prioritized_types) {
       const KernelRegistration* reg = nullptr;
-      TF_RETURN_IF_ERROR(FindKernelRegistration(device_type, def, &reg));
+      bool was_attr_mismatch;
+      TF_RETURN_IF_ERROR(
+          FindKernelRegistration(device_type, def, &reg, &was_attr_mismatch));
       if (reg != nullptr) device_types->push_back(device_type);
     }
   } else {
@@ -763,6 +789,13 @@ Status SupportedDeviceTypesForNode(
     }
   }
   return Status::OK();
+}
+
+void LogAllRegisteredKernels() {
+  for (const auto& key_registration : *GlobalKernelRegistryTyped()) {
+    const KernelDef& kernel_def(key_registration.second.def);
+    LOG(INFO) << "OpKernel ('" << ProtoShortDebugString(kernel_def) << "')";
+  }
 }
 
 std::unique_ptr<OpKernel> CreateOpKernel(
@@ -781,9 +814,9 @@ Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
   VLOG(1) << "Instantiating kernel for node: " << SummarizeNodeDef(node_def);
 
   // Look up the Op registered for this op name.
-  Status s;
-  const OpDef* op_def = OpRegistry::Global()->LookUp(node_def.op(), &s);
-  if (op_def == nullptr) return s;
+  const OpDef* op_def = nullptr;
+  Status s = OpRegistry::Global()->LookUpOpDef(node_def.op(), &op_def);
+  if (!s.ok()) return s;
 
   // Validate node_def against OpDef.
   s = ValidateNodeDef(node_def, *op_def);
@@ -791,7 +824,9 @@ Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
 
   // Look up kernel registration.
   const KernelRegistration* registration;
-  s = FindKernelRegistration(device_type, node_def, &registration);
+  bool was_attr_mismatch;
+  s = FindKernelRegistration(device_type, node_def, &registration,
+                             &was_attr_mismatch);
   if (!s.ok()) {
     errors::AppendToMessage(&s, " when instantiating ", node_def.op());
     return s;
@@ -801,6 +836,10 @@ Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
                               "' OpKernel for ", DeviceTypeString(device_type),
                               " devices compatible with node ",
                               SummarizeNodeDef(node_def)));
+    if (was_attr_mismatch) {
+      errors::AppendToMessage(
+          &s, " (OpKernel was found, but attributes didn't match)");
+    }
     return s;
   }
 
@@ -849,22 +888,23 @@ bool FindArgInOp(StringPiece arg_name,
 }  // namespace
 
 Status ValidateKernelRegistrations(const OpRegistryInterface& op_registry) {
-  Status unused_status;
   for (const auto& key_registration : *GlobalKernelRegistryTyped()) {
     const KernelDef& kernel_def(key_registration.second.def);
-    const OpDef* op_def = op_registry.LookUp(kernel_def.op(), &unused_status);
-    if (op_def == nullptr) {
+    const OpRegistrationData* op_reg_data;
+    const Status status = op_registry.LookUp(kernel_def.op(), &op_reg_data);
+    if (!status.ok()) {
       // TODO(josh11b): Make this a hard error.
-      LOG(ERROR) << "OpKernel ('" << kernel_def.ShortDebugString()
+      LOG(ERROR) << "OpKernel ('" << ProtoShortDebugString(kernel_def)
                  << "') for unknown op: " << kernel_def.op();
       continue;
     }
+    const OpDef& op_def = op_reg_data->op_def;
     for (const auto& host_memory_arg : kernel_def.host_memory_arg()) {
-      if (!FindArgInOp(host_memory_arg, op_def->input_arg()) &&
-          !FindArgInOp(host_memory_arg, op_def->output_arg())) {
+      if (!FindArgInOp(host_memory_arg, op_def.input_arg()) &&
+          !FindArgInOp(host_memory_arg, op_def.output_arg())) {
         return errors::InvalidArgument("HostMemory arg '", host_memory_arg,
                                        "' not found in OpDef: ",
-                                       SummarizeOpDef(*op_def));
+                                       SummarizeOpDef(op_def));
       }
     }
   }

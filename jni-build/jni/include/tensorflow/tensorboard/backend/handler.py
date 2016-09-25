@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -29,15 +29,17 @@ import imghdr
 import json
 import mimetypes
 import os
+import re
 
 from six import BytesIO
+from six import StringIO
 from six.moves import BaseHTTPServer
 from six.moves import urllib
 from six.moves import xrange  # pylint: disable=redefined-builtin
 from six.moves.urllib import parse as urlparse
 
-from tensorflow.python.platform import logging
 from tensorflow.python.platform import resource_loader
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import event_accumulator
 from tensorflow.python.util import compat
 from tensorflow.tensorboard.backend import process_graph
@@ -48,12 +50,14 @@ DATA_PREFIX = '/data'
 RUNS_ROUTE = '/runs'
 SCALARS_ROUTE = '/' + event_accumulator.SCALARS
 IMAGES_ROUTE = '/' + event_accumulator.IMAGES
+AUDIO_ROUTE = '/' + event_accumulator.AUDIO
 HISTOGRAMS_ROUTE = '/' + event_accumulator.HISTOGRAMS
 COMPRESSED_HISTOGRAMS_ROUTE = '/' + event_accumulator.COMPRESSED_HISTOGRAMS
 INDIVIDUAL_IMAGE_ROUTE = '/individualImage'
+INDIVIDUAL_AUDIO_ROUTE = '/individualAudio'
 GRAPH_ROUTE = '/' + event_accumulator.GRAPH
 RUN_METADATA_ROUTE = '/' + event_accumulator.RUN_METADATA
-TAB_ROUTES = ['', '/events', '/images', '/graphs', '/histograms']
+TAB_ROUTES = ['', '/events', '/images', '/audio', '/graphs', '/histograms']
 
 _IMGHDR_TO_MIMETYPE = {
     'bmp': 'image/bmp',
@@ -62,6 +66,11 @@ _IMGHDR_TO_MIMETYPE = {
     'png': 'image/png'
 }
 _DEFAULT_IMAGE_MIMETYPE = 'application/octet-stream'
+
+# Allows *, gzip or x-gzip, but forbid gzip;q=0
+# https://tools.ietf.org/html/rfc7231#section-5.3.4
+_ALLOWS_GZIP_PATTERN = re.compile(
+    r'(?:^|,|\s)(?:(?:x-)?gzip|\*)(?!;q=0)(?:\s|,|$)')
 
 
 def _content_type_for_image(encoded_image_string):
@@ -88,6 +97,10 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
   # How many samples to include in sampling API calls by default.
   DEFAULT_SAMPLE_COUNT = 10
+
+  # NOTE TO MAINTAINERS: An accurate Content-Length MUST be specified on all
+  #                      responses using send_header.
+  protocol_version = 'HTTP/1.1'
 
   def __init__(self, multiplexer, *args):
     self._multiplexer = multiplexer
@@ -120,6 +133,28 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
       })
     return response
 
+  def _audio_response_for_run(self, run_audio, run, tag):
+    """Builds a JSON-serializable object with information about run_audio.
+
+    Args:
+      run_audio: A list of event_accumulator.AudioValueEvent objects.
+      run: The name of the run.
+      tag: The name of the tag the images all belong to.
+
+    Returns:
+      A list of dictionaries containing the wall time, step, URL, and
+      content_type for each audio clip.
+    """
+    response = []
+    for index, run_audio_clip in enumerate(run_audio):
+      response.append({
+          'wall_time': run_audio_clip.wall_time,
+          'step': run_audio_clip.step,
+          'content_type': run_audio_clip.content_type,
+          'query': self._query_for_individual_audio(run, tag, index)
+      })
+    return response
+
   def _path_is_safe(self, path):
     """Check path is safe (stays within current directory).
 
@@ -138,25 +173,54 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     prefix = os.path.commonprefix([base, absolute_path])
     return prefix == base
 
+  def _respond(self, content, content_type, code=200, encoding=None):
+    """Sends HTTP response.
+
+    All text responses are assumed to be utf-8 unless specified otherwise.
+
+    Args:
+      content: The content to respond with, which is converted to bytes.
+      content_type: The mime type of the content.
+      code: The numeric HTTP status code to use.
+      encoding: The encoding if any (not sanity checked.)
+    """
+    content = compat.as_bytes(content)
+    self.send_response(code)
+    if content_type.startswith(('text/', 'application/json')):
+      if 'charset=' not in content_type:
+        content_type += '; charset=utf-8'
+    self.send_header('Content-Type', content_type)
+    self.send_header('Content-Length', len(content))
+    if encoding:
+      self.send_header('Content-Encoding', encoding)
+    self.end_headers()
+    self.wfile.write(content)
+
+  def _is_gzip_accepted(self):
+    """Returns true if Accept-Encoding contains gzip."""
+    accept_encoding = self.headers.get('Accept-Encoding', '')
+    return _ALLOWS_GZIP_PATTERN.search(accept_encoding) is not None
+
   def _send_gzip_response(self, content, content_type, code=200):
     """Writes the given content as gzip response using the given content type.
+
+    If the HTTP client does not accept gzip encoding, then the response will be
+    sent uncompressed.
 
     Args:
       content: The content to respond with.
       content_type: The mime type of the content.
       code: The numeric HTTP status code to use.
     """
-    out = BytesIO()
-    f = gzip.GzipFile(fileobj=out, mode='wb')
-    f.write(compat.as_bytes(content))
-    f.close()
-    gzip_content = out.getvalue()
-    self.send_response(code)
-    self.send_header('Content-Type', content_type)
-    self.send_header('Content-Length', len(gzip_content))
-    self.send_header('Content-Encoding', 'gzip')
-    self.end_headers()
-    self.wfile.write(gzip_content)
+    encoding = None
+    if self._is_gzip_accepted():
+      out = BytesIO()
+      f = gzip.GzipFile(fileobj=out, mode='wb', compresslevel=3)
+      f.write(compat.as_bytes(content))
+      f.close()
+      content = out.getvalue()
+      encoding = 'gzip'
+    self._respond(content, content_type, code, encoding)
 
   def _send_json_response(self, obj, code=200):
     """Writes out the given object as JSON using the given HTTP status code.
@@ -167,14 +231,8 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
       obj: The object to respond with.
       code: The numeric HTTP status code to use.
     """
-
-    output = json.dumps(json_util.WrapSpecialFloats(obj))
-
-    self.send_response(code)
-    self.send_header('Content-Type', 'application/json')
-    self.send_header('Content-Length', len(output))
-    self.end_headers()
-    self.wfile.write(compat.as_bytes(output))
+    content = json.dumps(json_util.WrapSpecialFloats(obj))
+    self._respond(content, 'application/json', code)
 
   def _send_csv_response(self, serialized_csv, code=200):
     """Writes out the given string, which represents CSV data.
@@ -186,12 +244,7 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
       serialized_csv: A string containing some CSV data.
       code: The numeric HTTP status code to use.
     """
-
-    self.send_response(code)
-    self.send_header('Content-Type', 'text/csv')
-    self.send_header('Content-Length', len(serialized_csv))
-    self.end_headers()
-    self.wfile.write(serialized_csv)
+    self._respond(serialized_csv, 'text/csv', code)
 
   def _serve_scalars(self, query_params):
     """Given a tag and single run, return array of ScalarEvents.
@@ -224,7 +277,7 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
       values = self._multiplexer.Scalars(run, tag)
 
     if query_params.get('format') == _OutputFormat.CSV:
-      string_io = BytesIO()
+      string_io = StringIO()
       writer = csv.writer(string_io)
       writer.writerow(['Wall time', 'Step', 'Value'])
       writer.writerows(values)
@@ -301,7 +354,7 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     run = query_params.get('run')
     compressed_histograms = self._multiplexer.CompressedHistograms(run, tag)
     if query_params.get('format') == _OutputFormat.CSV:
-      string_io = BytesIO()
+      string_io = StringIO()
       writer = csv.writer(string_io)
 
       # Build the headers; we have two columns for timing and two columns for
@@ -348,12 +401,7 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     image = self._multiplexer.Images(run, tag)[index]
     encoded_image_string = image.encoded_image_string
     content_type = _content_type_for_image(encoded_image_string)
-
-    self.send_response(200)
-    self.send_header('Content-Type', content_type)
-    self.send_header('Content-Length', len(encoded_image_string))
-    self.end_headers()
-    self.wfile.write(encoded_image_string)
+    self._respond(encoded_image_string, content_type)
 
   def _query_for_individual_image(self, run, tag, index):
     """Builds a URL for accessing the specified image.
@@ -378,6 +426,58 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     })
     return query_string
 
+  def _serve_audio(self, query_params):
+    """Given a tag and list of runs, serve a list of audio.
+
+    Note that the audio clips themselves are not sent; instead, we respond with
+    URLs to the audio. The frontend should treat these URLs as opaque and should
+    not try to parse information about them or generate them itself, as the
+    format may change.
+
+    Args:
+      query_params: The query parameters as a dict.
+
+    """
+    tag = query_params.get('tag')
+    run = query_params.get('run')
+
+    audio_list = self._multiplexer.Audio(run, tag)
+    response = self._audio_response_for_run(audio_list, run, tag)
+    self._send_json_response(response)
+
+  def _serve_individual_audio(self, query_params):
+    """Serves an individual audio clip."""
+    tag = query_params.get('tag')
+    run = query_params.get('run')
+    index = int(query_params.get('index'))
+    audio = self._multiplexer.Audio(run, tag)[index]
+    encoded_audio_string = audio.encoded_audio_string
+    content_type = audio.content_type
+    self._respond(encoded_audio_string, content_type)
+
+  def _query_for_individual_audio(self, run, tag, index):
+    """Builds a URL for accessing the specified audio.
+
+    This should be kept in sync with _serve_individual_audio. Note that the URL
+    is *not* guaranteed to always return the same audio, since audio may be
+    unloaded from the reservoir as new audio comes in.
+
+    Args:
+      run: The name of the run.
+      tag: The tag.
+      index: The index of the audio. Negative values are OK.
+
+    Returns:
+      A string representation of a URL that will load the index-th
+      sampled audio in the given run with the given tag.
+    """
+    query_string = urllib.parse.urlencode({
+        'run': run,
+        'tag': tag,
+        'index': index
+    })
+    return query_string
+
   def _serve_runs(self, unused_query_params):
     """Return a JSON object about runs and tags.
 
@@ -385,10 +485,21 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     Returns:
       {runName: {images: [tag1, tag2, tag3],
+                 audio: [tag4, tag5, tag6],
                  scalars: [tagA, tagB, tagC],
-                 histograms: [tagX, tagY, tagZ]}}
+                 histograms: [tagX, tagY, tagZ],
+                 firstEventTimestamp: 123456.789}}
     """
-    self._send_json_response(self._multiplexer.Runs())
+    runs = self._multiplexer.Runs()
+    for run_name, run_data in runs.items():
+      try:
+        run_data['firstEventTimestamp'] = self._multiplexer.FirstEventTimestamp(
+            run_name)
+      except ValueError:
+        logging.warning('Unable to get first event timestamp for run %s',
+                        run_name)
+        run_data['firstEventTimestamp'] = None
+    self._send_json_response(runs)
 
   def _serve_index(self, unused_query_params):
     """Serves the index page (i.e., the tensorboard app itself)."""
@@ -431,13 +542,9 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
       logging.info('path %s not found, sending 404', path)
       self.send_error(404)
       return
-
-    self.send_response(200)
-
-    mimetype = mimetypes.guess_type(path)[0] or 'application/octet-stream'
-    self.send_header('Content-Type', mimetype)
-    self.end_headers()
-    self.wfile.write(contents)
+    mimetype, encoding = mimetypes.guess_type(path)
+    mimetype = mimetype or 'application/octet-stream'
+    self._respond(contents, mimetype, encoding=encoding)
 
   def do_GET(self):  # pylint: disable=invalid-name
     """Handler for all get requests."""
@@ -457,6 +564,8 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self._serve_compressed_histograms,
         DATA_PREFIX + IMAGES_ROUTE: self._serve_images,
         DATA_PREFIX + INDIVIDUAL_IMAGE_ROUTE: self._serve_image,
+        DATA_PREFIX + AUDIO_ROUTE: self._serve_audio,
+        DATA_PREFIX + INDIVIDUAL_AUDIO_ROUTE: self._serve_individual_audio,
         DATA_PREFIX + RUNS_ROUTE: self._serve_runs,
         '/app.js': self._serve_js
     }

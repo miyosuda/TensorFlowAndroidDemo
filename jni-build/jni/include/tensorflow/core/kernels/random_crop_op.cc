@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -28,7 +28,6 @@ template <typename T>
 class RandomCropOp : public OpKernel {
  public:
   explicit RandomCropOp(OpKernelConstruction* context) : OpKernel(context) {
-    OP_DEPRECATED(context, 8, "Random crop is now pure Python");
     OP_REQUIRES_OK(context, generator_.Init(context));
   }
 

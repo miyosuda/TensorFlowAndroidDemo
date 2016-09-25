@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,6 +21,8 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
+#include "tensorflow/core/common_runtime/memory_types.h"
+#include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
@@ -155,9 +157,6 @@ class ArgOp : public OpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(ArgOp);
 };
 
-REGISTER_KERNEL_BUILDER(Name("_Arg").Device(DEVICE_CPU), ArgOp);
-REGISTER_KERNEL_BUILDER(Name("_Arg").Device(DEVICE_GPU), ArgOp);
-
 class RetvalOp : public OpKernel {
  public:
   explicit RetvalOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
@@ -183,8 +182,29 @@ class RetvalOp : public OpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(RetvalOp);
 };
 
+REGISTER_KERNEL_BUILDER(Name("_Arg").Device(DEVICE_CPU), ArgOp);
 REGISTER_KERNEL_BUILDER(Name("_Retval").Device(DEVICE_CPU), RetvalOp);
-REGISTER_KERNEL_BUILDER(Name("_Retval").Device(DEVICE_GPU), RetvalOp);
+
+#define REGISTER_GPU_KERNELS(type)                                       \
+  REGISTER_KERNEL_BUILDER(                                               \
+      Name("_Arg").Device(DEVICE_GPU).TypeConstraint<type>("T"), ArgOp); \
+  REGISTER_KERNEL_BUILDER(                                               \
+      Name("_Retval").Device(DEVICE_GPU).TypeConstraint<type>("T"), RetvalOp);
+REGISTER_GPU_KERNELS(Eigen::half);
+REGISTER_GPU_KERNELS(float);
+REGISTER_GPU_KERNELS(double);
+#undef REGISTER_GPU_KERNELS
+
+REGISTER_KERNEL_BUILDER(Name("_Arg")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("output")
+                            .TypeConstraint<int32>("T"),
+                        ArgOp);
+REGISTER_KERNEL_BUILDER(Name("_Retval")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("input")
+                            .TypeConstraint<int32>("T"),
+                        RetvalOp);
 
 class PassOn : public OpKernel {
  public:
@@ -199,16 +219,40 @@ class PassOn : public OpKernel {
     }
   }
 };
+
 REGISTER_KERNEL_BUILDER(Name("_ListToArray").Device(DEVICE_CPU), PassOn);
-REGISTER_KERNEL_BUILDER(Name("_ListToArray").Device(DEVICE_GPU), PassOn);
 REGISTER_KERNEL_BUILDER(Name("_ArrayToList").Device(DEVICE_CPU), PassOn);
-REGISTER_KERNEL_BUILDER(Name("_ArrayToList").Device(DEVICE_GPU), PassOn);
+
+#define REGISTER_GPU_KERNELS(type)                                       \
+  REGISTER_KERNEL_BUILDER(                                               \
+      Name("_ListToArray").Device(DEVICE_GPU).TypeConstraint<type>("T"), \
+      PassOn);                                                           \
+  REGISTER_KERNEL_BUILDER(                                               \
+      Name("_ArrayToList").Device(DEVICE_GPU).TypeConstraint<type>("T"), \
+      PassOn);
+
+REGISTER_GPU_KERNELS(Eigen::half);
+REGISTER_GPU_KERNELS(float);
+REGISTER_GPU_KERNELS(double);
+
+#undef REGISTER_GPU_KERNELS
+
+REGISTER_KERNEL_BUILDER(Name("_ListToArray")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("output")
+                            .TypeConstraint<int32>("T"),
+                        PassOn);
+REGISTER_KERNEL_BUILDER(Name("_ArrayToList")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("input")
+                            .TypeConstraint<int32>("T"),
+                        PassOn);
 
 static const FunctionLibraryRuntime::Handle kInvalidHandle = -1;
 
 class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
  public:
-  FunctionLibraryRuntimeImpl(Device* device, Runner runner,
+  FunctionLibraryRuntimeImpl(const DeviceMgr* dmgr, Device* device,
                              int graph_def_version,
                              const FunctionLibraryDefinition* lib_def,
                              const OptimizerOptions& optimizer_options);
@@ -228,13 +272,18 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
 
   bool IsStateful(const string& function) override;
 
+  const FunctionLibraryDefinition* GetFunctionLibraryDefinition()
+      const override {
+    return lib_def_;
+  }
+
   Device* device() override { return device_; }
 
  private:
   typedef FunctionLibraryRuntimeImpl ME;
 
+  const DeviceMgr* const device_mgr_;
   Device* const device_;
-  Runner runner_ = nullptr;
   const int graph_def_version_;
   const FunctionLibraryDefinition* const lib_def_;
   GraphOptimizer optimizer_;
@@ -272,18 +321,16 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
 };
 
 FunctionLibraryRuntimeImpl::FunctionLibraryRuntimeImpl(
-    Device* device, Runner runner, int graph_def_version,
+    const DeviceMgr* dmgr, Device* device, int graph_def_version,
     const FunctionLibraryDefinition* lib_def,
     const OptimizerOptions& optimizer_options)
-    : device_(device),
-      runner_(runner),
+    : device_mgr_(dmgr),
+      device_(device),
       graph_def_version_(graph_def_version),
       lib_def_(lib_def),
       optimizer_(optimizer_options) {
   get_func_sig_ = [this](const string& op, const OpDef** sig) {
-    Status s;
-    *sig = lib_def_->LookUp(op, &s);
-    return s;
+    return lib_def_->LookUpOpDef(op, sig);
   };
   create_kernel_ = [this](const NodeDef& ndef, OpKernel** kernel) {
     return CreateKernel(ndef, kernel);
@@ -312,6 +359,7 @@ class CallOp : public AsyncOpKernel {
                       done);
     FunctionLibraryRuntime::Options opts;
     opts.step_id = ctx->step_id();
+    opts.runner = ctx->runner();
     std::vector<Tensor> args;
     args.reserve(ctx->num_inputs());
     for (int i = 0; i < ctx->num_inputs(); ++i) {
@@ -357,29 +405,29 @@ class SymbolicGradientOp : public AsyncOpKernel {
 
     FunctionLibraryRuntime::Options opts;
     opts.step_id = ctx->step_id();
+    opts.runner = ctx->runner();
     std::vector<Tensor> args;
     args.reserve(ctx->num_inputs());
     for (int i = 0; i < ctx->num_inputs(); ++i) {
       args.push_back(ctx->input(i));
     }
     std::vector<Tensor>* rets = new std::vector<Tensor>;
-    lib->Run(opts, handle_, args, rets,
-             [ctx, done, rets](const Status& status) {
-               if (!status.ok()) {
-                 ctx->SetStatus(status);
-               } else if (rets->size() != ctx->num_outputs()) {
-                 ctx->SetStatus(errors::InvalidArgument(
-                     "SymGrad expects to return ", ctx->num_outputs(),
-                     " tensor(s), but get ", rets->size(),
-                     " tensor(s) instead."));
-               } else {
-                 for (size_t i = 0; i < rets->size(); ++i) {
-                   ctx->set_output(i, (*rets)[i]);
-                 }
-               }
-               delete rets;
-               done();
-             });
+    lib->Run(
+        opts, handle_, args, rets, [ctx, done, rets](const Status& status) {
+          if (!status.ok()) {
+            ctx->SetStatus(status);
+          } else if (rets->size() != ctx->num_outputs()) {
+            ctx->SetStatus(errors::InvalidArgument(
+                "SymGrad expects to return ", ctx->num_outputs(),
+                " tensor(s), but get ", rets->size(), " tensor(s) instead."));
+          } else {
+            for (size_t i = 0; i < rets->size(); ++i) {
+              ctx->set_output(i, (*rets)[i]);
+            }
+          }
+          delete rets;
+          done();
+        });
   }
 
  private:
@@ -565,6 +613,12 @@ Status FunctionLibraryRuntimeImpl::CreateItem(Handle handle, Item** item) {
   CopyGraph(*fbody->graph, g);
 
   optimizer_.Optimize(this, device(), &g);
+  auto s = EnsureMemoryTypes(DeviceType(device()->device_type()),
+                             device()->name(), g);
+  if (!s.ok()) {
+    delete g;
+    return Status::OK();
+  }
 
   // Creates an executor based on the g.  This must be done without
   // holding mu_ because create_kernel_ calls back into the library.
@@ -632,18 +686,25 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
     delete frame;
     return done(s);
   }
+  DCHECK(opts.runner != nullptr);
+
   Executor::Args exec_args;
   // Inherit the step_id from the caller.
   exec_args.step_id = opts.step_id;
   exec_args.call_frame = frame;
   exec_args.cancellation_manager = opts.cancellation_manager;
-  exec_args.runner = runner_;
+  exec_args.runner = *opts.runner;
+  // TODO(zhifengc): we can avoid creating rendez here if we know
+  // there is no send/recv nodes in the graph.
+  auto* rendez = new IntraProcessRendezvous(device_mgr_);
+  exec_args.rendezvous = rendez;
   item->exec->RunAsync(
       // Executor args
       exec_args,
       // Done callback.
-      [item, frame, rets, done](const Status& status) {
+      [item, frame, rets, rendez, done](const Status& status) {
         item->Unref();
+        rendez->Unref();
         Status s = status;
         if (s.ok()) {
           s = frame->GetRetvals(rets);
@@ -654,52 +715,29 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
 }
 
 bool FunctionLibraryRuntimeImpl::IsStateful(const string& func) {
-  Status s;
-  auto sig = lib_def_->LookUp(func, &s);
-  return s.ok() && sig->is_stateful();
+  const OpDef* op_def;
+  const Status s = lib_def_->LookUpOpDef(func, &op_def);
+  return s.ok() && op_def->is_stateful();
 }
 
 FunctionLibraryRuntime* NewFunctionLibraryRuntime(
-    Device* device, Runner runner, int graph_def_version,
+    const DeviceMgr* dmgr, Device* device, int graph_def_version,
     const FunctionLibraryDefinition* lib_def,
     const OptimizerOptions& optimizer_options) {
-  return new FunctionLibraryRuntimeImpl(device, runner, graph_def_version,
+  return new FunctionLibraryRuntimeImpl(dmgr, device, graph_def_version,
                                         lib_def, optimizer_options);
 }
 
 bool RemoveDeadNodes(Graph* g) {
   VLOG(2) << "Removing dead nodes";
-  std::vector<bool> visited(g->num_node_ids(), false);
-  std::deque<Node*> q;
+  std::unordered_set<const Node*> nodes;
   for (auto n : g->nodes()) {
     if (n->IsSource() || n->IsSink() || n->IsControlFlow() ||
         n->op_def().is_stateful()) {
-      q.push_back(n);
-      visited[n->id()] = true;
+      nodes.insert(n);
     }
   }
-  while (!q.empty()) {
-    const Node* n = q.front();
-    q.pop_front();
-    for (auto e : n->in_edges()) {
-      Node* p = e->src();
-      if (!visited[p->id()]) {
-        q.push_back(p);
-        visited[p->id()] = true;
-      }
-    }
-  }
-  bool removed_any = false;
-  for (std::size_t i = 0; i < visited.size(); ++i) {
-    if (!visited[i]) {
-      Node* n = g->FindNodeId(i);
-      if (n) {
-        g->RemoveNode(n);
-        removed_any = true;
-      }
-    }
-  }
-  return removed_any;
+  return PruneForReverseReachability(g, std::move(nodes));
 }
 
 namespace {
@@ -1006,7 +1044,7 @@ bool ShouldInline(const NodeDef& ndef) {
     // whether to inline or not.
     return true;
   }
-  // If the node is a SymbolicGradient, we use the the forward
+  // If the node is a SymbolicGradient, we use the forward
   // function's attribute 'noinline' instead.
   const NameAttrList* forward_func_attrs;
   Status s =

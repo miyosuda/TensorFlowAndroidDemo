@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os.path
 import time
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
@@ -82,7 +83,7 @@ def fill_feed_dict(data_set, images_pl, labels_pl):
     feed_dict: The feed dictionary mapping from placeholders to values.
   """
   # Create the feed_dict for the placeholders filled with the next
-  # `batch size ` examples.
+  # `batch size` examples.
   images_feed, labels_feed = data_set.next_batch(FLAGS.batch_size,
                                                  FLAGS.fake_data)
   feed_dict = {
@@ -150,20 +151,24 @@ def run_training():
     # Build the summary operation based on the TF collection of Summaries.
     summary_op = tf.merge_all_summaries()
 
+    # Add the variable initializer Op.
+    init = tf.initialize_all_variables()
+
     # Create a saver for writing training checkpoints.
     saver = tf.train.Saver()
 
     # Create a session for running Ops on the Graph.
     sess = tf.Session()
 
-    # Run the Op to initialize the variables.
-    init = tf.initialize_all_variables()
-    sess.run(init)
-
     # Instantiate a SummaryWriter to output summaries and the Graph.
     summary_writer = tf.train.SummaryWriter(FLAGS.train_dir, sess.graph)
 
-    # And then after everything is built, start the training loop.
+    # And then after everything is built:
+
+    # Run the Op to initialize the variables.
+    sess.run(init)
+
+    # Start the training loop.
     for step in xrange(FLAGS.max_steps):
       start_time = time.time()
 
@@ -194,7 +199,8 @@ def run_training():
 
       # Save a checkpoint and evaluate the model periodically.
       if (step + 1) % 1000 == 0 or (step + 1) == FLAGS.max_steps:
-        saver.save(sess, FLAGS.train_dir, global_step=step)
+        checkpoint_file = os.path.join(FLAGS.train_dir, 'checkpoint')
+        saver.save(sess, checkpoint_file, global_step=step)
         # Evaluate against the training set.
         print('Training Data Eval:')
         do_eval(sess,

@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,10 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import constant_op
-# pylint: disable=unused-import
 from tensorflow.python.ops import math_ops
-# pylint: enable=unused-import
 from tensorflow.python.training import optimizer
 from tensorflow.python.training import training_ops
 
@@ -49,13 +46,15 @@ class GradientDescentOptimizer(optimizer.Optimizer):
   def _apply_dense(self, grad, var):
     return training_ops.apply_gradient_descent(
         var,
-        self._learning_rate_tensor,
+        math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype),
         grad,
         use_locking=self._use_locking).op
 
   def _apply_sparse(self, grad, var):
-    delta = ops.IndexedSlices(grad.values * self._learning_rate_tensor,
-                              grad.indices, grad.dense_shape)
+    delta = ops.IndexedSlices(
+        grad.values *
+        math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype),
+        grad.indices, grad.dense_shape)
     return var.scatter_sub(delta, use_locking=self._use_locking)
 
   def _prepare(self):

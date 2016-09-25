@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,10 +16,10 @@ limitations under the License.
 #include "tensorflow/core/kernels/cwise_ops_common.h"
 
 namespace tensorflow {
-REGISTER8(BinaryOp, CPU, "Greater", functor::greater, Eigen::half, float,
+REGISTER8(BinaryOp, CPU, "Greater", functor::greater, float, Eigen::half,
           double, int32, int64, uint8, int8, int16);
 #if GOOGLE_CUDA
-REGISTER7(BinaryOp, GPU, "Greater", functor::greater, Eigen::half, float,
+REGISTER7(BinaryOp, GPU, "Greater", functor::greater, float, Eigen::half,
           double, int64, uint8, int8, int16);
 
 // A special GPU kernel for int32.
